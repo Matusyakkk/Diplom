@@ -55,20 +55,24 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.example.myapplication.R
+import com.example.myapplication.viewmodel.ViewModel
 import kotlin.math.roundToInt
 
 @Composable
-fun ProfileScreen(navController: NavController) {
+fun ProfileScreen(
+    viewModel: ViewModel,
+    navController: NavController
+) {
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp)
     ) {
         //Header
-        TopBar(navController)
+        TopBar(viewModel, navController)
 
         //Інформація профілю
-        ProfileInformation()
+        ProfileInformation(viewModel)
 
         //Дані під інформацією профілю
         TabsInProfile(navController)
@@ -78,7 +82,7 @@ fun ProfileScreen(navController: NavController) {
 
 //Header
 @Composable
-fun TopBar(navController: NavController? = null) {
+fun TopBar(viewModel: ViewModel, navController: NavController? = null) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.Start
@@ -97,7 +101,10 @@ fun TopBar(navController: NavController? = null) {
                 fontWeight = FontWeight.Bold
             )
             Spacer(modifier = Modifier.width(8.dp))
-            IconButton(onClick = { navController?.navigate("walletConnect") }) {
+            IconButton(onClick = {
+                viewModel.logOut()
+                navController?.navigate("walletConnect")
+            }) {
                 Image(
                     painter = painterResource(id = R.drawable.ic_user),
                     contentDescription = "Перехід на профіль"
@@ -110,7 +117,7 @@ fun TopBar(navController: NavController? = null) {
 
 //Інформація профілю
 @Composable
-fun ProfileInformation() {
+fun ProfileInformation(viewModel: ViewModel) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -143,7 +150,7 @@ fun ProfileInformation() {
                 style = MaterialTheme.typography.headlineLarge
             )
             Text(
-                text = "0x15Sdasv589dsaSD",
+                text = viewModel.address,
                 style = MaterialTheme.typography.bodyLarge,
                 modifier = Modifier.padding(16.dp),
                 color = Color.Gray

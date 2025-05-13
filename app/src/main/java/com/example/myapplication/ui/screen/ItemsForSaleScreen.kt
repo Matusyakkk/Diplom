@@ -24,6 +24,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -40,11 +41,12 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.example.myapplication.data.Item
 import com.example.myapplication.R
+import com.example.myapplication.viewmodel.ViewModel
 
 
 @Composable
 fun ItemsForSaleScreen(
-    //modifier: Modifier,
+    viewModel: ViewModel,
     navController: NavController
 ) {
     val items = listOf(
@@ -57,7 +59,7 @@ fun ItemsForSaleScreen(
             .fillMaxSize()
             .padding(16.dp)
     ) {
-        TitleIcon("Предмети на продаж", R.drawable.ic_user, navController)
+        TitleIcon("Предмети на продаж", R.drawable.ic_user, navController, viewModel)
 
         LazyColumn {
             items(items.size) { index ->
@@ -133,7 +135,8 @@ fun ItemRow(item: Item, navController: NavController) {
 }
 
 @Composable
-fun TitleIcon(text: String, imageID: Int, navController: NavController){
+fun TitleIcon(text: String, imageID: Int, navController: NavController, viewModel: ViewModel){
+    val uiState by viewModel.uiState.collectAsState()
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -146,7 +149,13 @@ fun TitleIcon(text: String, imageID: Int, navController: NavController){
             fontWeight = FontWeight.Bold
         )
         Spacer(modifier = Modifier.width(8.dp))
-        IconButton(onClick = { navController.navigate("profile") }) {
+        IconButton(onClick = {
+            if(uiState.walletConnected) navController.navigate("profile")
+            else {
+                viewModel.resetWalletConnectUiState()
+                navController.navigate("walletConnect")
+            }
+        }) {
             Image(
                 painter = painterResource(id = imageID),
                 contentDescription = "Перехід на профіль"

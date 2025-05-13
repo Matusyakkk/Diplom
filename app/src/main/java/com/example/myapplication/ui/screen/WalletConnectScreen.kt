@@ -24,14 +24,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
-import com.example.myapplication.viewmodel.WalletConnectViewModel
+import com.example.myapplication.viewmodel.ViewModel
 
 
 @Composable
 fun WalletConnectScreen(
-    viewModel: WalletConnectViewModel = viewModel(),
+    viewModel: ViewModel,
     navController: NavController
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -78,7 +77,7 @@ fun WalletConnectScreen(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Button(
-                onClick = { viewModel.onConnectClick() },
+                onClick = { viewModel.connectWallet() },
                 shape = RoundedCornerShape(24.dp),
                 modifier = Modifier
                     .fillMaxWidth()
