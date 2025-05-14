@@ -15,6 +15,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.example.myapplication.ui.screen.BuyOutScreen
+import com.example.myapplication.ui.screen.CreateItemScreen
 import com.example.myapplication.ui.screen.ItemDetailScreen
 import com.example.myapplication.ui.screen.ItemsForSaleScreen
 import com.example.myapplication.ui.screen.MakeBidScreen
@@ -57,6 +58,9 @@ fun NavGraph(viewModel: ViewModel = hiltViewModel(), modifier: Modifier) {
         }
         composable("itemList") {
             ItemsForSaleScreen(viewModel, navController = navController)
+        }
+        composable("createItem") {
+            CreateItemScreen(viewModel, navController = navController)
         }
         composable ("profile") {
             ProfileScreen(viewModel, navController = navController)

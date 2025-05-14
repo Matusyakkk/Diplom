@@ -20,10 +20,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -32,6 +35,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.painterResource
@@ -39,8 +43,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
-import com.example.myapplication.data.Item
 import com.example.myapplication.R
+import com.example.myapplication.data.TestItem
 import com.example.myapplication.viewmodel.ViewModel
 
 
@@ -49,31 +53,85 @@ fun ItemsForSaleScreen(
     viewModel: ViewModel,
     navController: NavController
 ) {
-    val items = listOf(
-        Item("Предмет 1", "Опис предмета 1", 100, 500, "https://via.placeholder.com/150", 3600),
-        Item("Предмет 2", "Опис предмета 2", 150, 700, "https://via.placeholder.com/150", 5400),
-        Item("Предмет 3", "Опис предмета 3", 200, 1000, "https://via.placeholder.com/150", 7200)
-    )
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
-    ) {
-        TitleIcon("Предмети на продаж", R.drawable.ic_user, navController, viewModel)
+    val uiState by viewModel.uiState.collectAsState()
+    val items by viewModel.parsedNFTs.collectAsState(initial = emptyList())
+    LaunchedEffect(Unit) {
+        viewModel.fetchNftData()
+    }
+    Scaffold(
+        bottomBar = {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(24.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
 
-        LazyColumn {
-            items(items.size) { index ->
-                val item = items[index]
-                ItemRow(item = item, navController)
+                if (uiState.walletConnected) {
+                    Button(
+                        onClick = {
+                            navController.navigate("createItem")
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(64.dp)
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text(
+                            text = "Створити своє NFT",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.Black
+                        )
+                    }
+                } else {
+                    Button(
+                        onClick = {
+                            viewModel.resetWalletConnectUiState()
+                            navController.navigate("walletConnect")
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(64.dp)
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text(
+                            text = "Підключити гманець",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.Black
+                        )
+                    }
+                }
+
+
             }
         }
+    ) { innerPadding ->
 
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .padding(end = 16.dp, start = 16.dp)
+        ) {
+            TitleIcon("Предмети на продаж", R.drawable.ic_user, navController, viewModel)
+
+            LazyColumn {
+                items(items.size) { index ->
+                    val item = items[index]
+                    ItemRow(item = item, navController)
+                }
+            }
+        }
     }
 }
 
 // Компонент для відображення предмета в списку
 @Composable
-fun ItemRow(item: Item, navController: NavController) {
+fun ItemRow(item: TestItem, navController: NavController) {
     var expanded by remember { mutableStateOf(false) }
 
     Column(
@@ -109,15 +167,15 @@ fun ItemRow(item: Item, navController: NavController) {
             exit = fadeOut() + shrinkVertically()
         ) {
             Column(modifier = Modifier.clip(RoundedCornerShape(18.dp))) {
-                    Image(
-                        painter = painterResource(id = R.drawable.nft12),
-                        contentDescription = "Item Image",
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(300.dp)
-                            .clickable {navController.navigate("itemDetail/${item.name}")}
-                    )
+                Image(
+                    painter = painterResource(id = R.drawable.nft12),
+                    contentDescription = "Item Image",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(300.dp)
+                        .clickable { navController.navigate("itemDetail/${item.name}") }
+                )
                 Text(
                     text = item.name,
                     style = MaterialTheme.typography.headlineMedium,
@@ -135,12 +193,14 @@ fun ItemRow(item: Item, navController: NavController) {
 }
 
 @Composable
-fun TitleIcon(text: String, imageID: Int, navController: NavController, viewModel: ViewModel){
+fun TitleIcon(text: String, imageID: Int, navController: NavController, viewModel: ViewModel) {
     val uiState by viewModel.uiState.collectAsState()
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
-        modifier = Modifier.fillMaxWidth().padding(8.dp)
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(8.dp)
     ) {
         Text(
             text = text,
@@ -149,17 +209,13 @@ fun TitleIcon(text: String, imageID: Int, navController: NavController, viewMode
             fontWeight = FontWeight.Bold
         )
         Spacer(modifier = Modifier.width(8.dp))
-        IconButton(onClick = {
-            if(uiState.walletConnected) navController.navigate("profile")
-            else {
-                viewModel.resetWalletConnectUiState()
-                navController.navigate("walletConnect")
+        if (uiState.walletConnected) {
+            IconButton(onClick = { navController.navigate("profile") }) {
+                Image(
+                    painter = painterResource(id = imageID),
+                    contentDescription = "Перехід на профіль"
+                )
             }
-        }) {
-            Image(
-                painter = painterResource(id = imageID),
-                contentDescription = "Перехід на профіль"
-            )
         }
     }
     Spacer(modifier = Modifier.height(16.dp))
