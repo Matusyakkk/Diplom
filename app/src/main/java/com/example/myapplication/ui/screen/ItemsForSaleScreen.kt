@@ -44,7 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.example.myapplication.R
-import com.example.myapplication.data.TestItem
+import com.example.myapplication.data.AssetData
 import com.example.myapplication.viewmodel.ViewModel
 
 
@@ -54,9 +54,9 @@ fun ItemsForSaleScreen(
     navController: NavController
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val items by viewModel.parsedNFTs.collectAsState(initial = emptyList())
+    val items by viewModel.parsedAssets.collectAsState(initial = emptyList())
     LaunchedEffect(Unit) {
-        viewModel.fetchNftData()
+        viewModel.fetchAssetData()
     }
     Scaffold(
         bottomBar = {
@@ -131,7 +131,7 @@ fun ItemsForSaleScreen(
 
 // Компонент для відображення предмета в списку
 @Composable
-fun ItemRow(item: TestItem, navController: NavController) {
+fun ItemRow(item: AssetData, navController: NavController) {
     var expanded by remember { mutableStateOf(false) }
 
     Column(

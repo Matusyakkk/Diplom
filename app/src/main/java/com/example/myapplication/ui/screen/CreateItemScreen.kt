@@ -74,7 +74,7 @@ fun CreateItemScreen(
                         imageUri?.let { uri ->
                             val file = uriToFile(uri, context)
                             if (file != null) {
-                                viewModel.createNft(file, name, description)
+                                viewModel.createAsset(file, name, description)
                             }
                         }
                         navController.popBackStack()

@@ -8,7 +8,16 @@ import androidx.lifecycle.ViewModel
 import dagger.hilt.android.lifecycle.HiltViewModel
 import io.metamask.androidsdk.Ethereum
 import androidx.lifecycle.viewModelScope
-import com.example.myapplication.data.TestItem
+import com.example.myapplication.contract.MyTokenizedAssets
+import com.example.myapplication.contract.MyTokenizedAssets.Asset
+import com.example.myapplication.data.AssetData
+import com.example.myapplication.di.INFURA_KEY
+import com.example.myapplication.data.WalletConnectUiState
+import io.metamask.androidsdk.EthereumMethod
+import io.metamask.androidsdk.EthereumRequest
+import io.metamask.androidsdk.Result
+import io.reactivex.rxjava3.disposables.CompositeDisposable
+import io.reactivex.rxjava3.disposables.Disposable
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -27,20 +36,43 @@ import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import org.json.JSONObject
+import org.web3j.abi.FunctionEncoder
+import org.web3j.abi.datatypes.Utf8String
+import org.web3j.abi.datatypes.Function
+import org.web3j.abi.datatypes.generated.Uint256
+import org.web3j.protocol.Web3j
+import org.web3j.protocol.core.DefaultBlockParameterName
+import org.web3j.protocol.http.HttpService
+import org.web3j.tx.ClientTransactionManager
+import org.web3j.tx.gas.StaticGasProvider
 import java.io.File
+import java.math.BigInteger
 import kotlin.math.pow
 
-@HiltViewModel
+var CONTRACT_ADDRESS = "123"
+
+@HiltViewModel //TODO: EventListeners
 class ViewModel @Inject constructor(private val ethereum: Ethereum): ViewModel() {
 
+    // is wallet connected state
     private val _uiState = MutableStateFlow(WalletConnectUiState())
     val uiState: StateFlow<WalletConnectUiState> = _uiState.asStateFlow()
 
-    private val _parsedNFTs = MutableStateFlow<List<TestItem>>(emptyList())
-    val parsedNFTs: StateFlow<List<TestItem>> = _parsedNFTs
+    //Metadata assets fetched from smart-contract(assets)
+    var assetsDataList by mutableStateOf<List<Asset>>(emptyList())
 
-    var nftDataList by mutableStateOf<List<String>>(emptyList())
+    //Assets parsed from Pinata
+    private val _parsedAssets = MutableStateFlow<List<AssetData>>(emptyList())
+    val parsedAssets: StateFlow<List<AssetData>> = _parsedAssets
 
+    //Smart-contract
+    private var contract: MyTokenizedAssets ?= null
+
+    //wallet address connected
+    var address by mutableStateOf("")
+        private set
+
+    private var compositeDisposable = CompositeDisposable()
     var uploadStatus by mutableStateOf<String?>(null)
         private set
     var parseStatus by mutableStateOf<String?>(null)
@@ -48,9 +80,8 @@ class ViewModel @Inject constructor(private val ethereum: Ethereum): ViewModel()
     var uiStatus by mutableStateOf("ConnectWalletComponent")
         internal set
 
-    var address by mutableStateOf("")
-        private set
 
+    //Connecting metamask wallet
     fun connectWallet() {
         viewModelScope.launch {
             ethereum.connect {
@@ -58,7 +89,10 @@ class ViewModel @Inject constructor(private val ethereum: Ethereum): ViewModel()
                 if (!address.isNullOrBlank()) {
                     _uiState.value = _uiState.value.copy(walletConnected = true)
                     //create contract
+                    createContract(address)
+                    checkContractConnection("ViewModel.connectWallet()")
                     //fetch data
+                    contract?.let { fetchAssetData() }
                 } else {
                     Log.e("TESTWALLET", "Failed to connect to wallet")
                 }
@@ -66,7 +100,176 @@ class ViewModel @Inject constructor(private val ethereum: Ethereum): ViewModel()
         }
     }
 
-    fun createNft(imageFile: File, name: String, description: String) {
+    //Connecting to contract
+    private fun createContract(address: String) {
+        if (contract == null) {
+            val httpService = HttpService("https://sepolia.infura.io/v3/$INFURA_KEY")
+            val web3j = Web3j.build(httpService)
+            contract = MyTokenizedAssets.load(
+                CONTRACT_ADDRESS,
+                web3j,
+                ClientTransactionManager(web3j, address),
+                StaticGasProvider(BigInteger.ZERO, BigInteger.valueOf(16000000))
+            )
+            checkContractConnection("ViewModel.createContract()")
+            initEventListeners()
+        }
+    }
+
+    //Minting asset to block-chain
+    fun mintAsset(assetURI: String, onSuccess: () -> Unit) {
+        val mintFunction = Function(
+            "mintAsset",
+            listOf(Utf8String(assetURI)),
+            emptyList()
+        )
+        val contractMetaData = FunctionEncoder.encode(mintFunction)
+        val params: Map<String, Any> = mutableMapOf(
+            "from" to address,
+            "to" to CONTRACT_ADDRESS,
+            "data" to contractMetaData
+        )
+        val sendTransactionRequest = EthereumRequest(
+            method = EthereumMethod.ETH_SEND_TRANSACTION.value,
+            params = listOf(params)
+        )
+        ethereum.connectWith(sendTransactionRequest) { result ->
+            when(result) {
+                is Result.Error -> {
+                    Log.e("FAIL", "ViewModel.mintAsset() Error ${result.error.message}")
+                }
+                is Result.Success.Item -> {
+                    val transactionHash = result.value
+                    Log.i("INFO","ViewModel.mintAsset() Mint successful, transaction hash $transactionHash")
+                    onSuccess()
+                    fetchAssetData()
+                }
+                else -> {  }
+            }
+        }
+    }
+
+    //User place bid for asset
+    fun placeBid(assetId: Int, bidAmount: BigInteger) {
+        val placeBidFunction = Function(
+            "placeBid",
+            listOf(Uint256(assetId.toBigInteger())),
+            emptyList()
+        )
+        val encodedFunction = FunctionEncoder.encode(placeBidFunction)
+
+        val params: Map<String, Any> = mutableMapOf(
+            "from" to address,
+            "to" to CONTRACT_ADDRESS,
+            "value" to bidAmount.toString(16),
+            "data" to encodedFunction
+        )
+
+        val sendTransactionRequest = EthereumRequest(
+            method = EthereumMethod.ETH_SEND_TRANSACTION.value,
+            params = listOf(params)
+        )
+
+        ethereum.connectWith(sendTransactionRequest) { result ->
+            when(result) {
+                is Result.Error -> {
+                    Log.e("FAIL", "ViewModel.placeBid() Error ${result.error.message}")
+                }
+                is Result.Success.Item -> {
+                    Log.i("INFO","ViewModel.placeBid() Bid placed, transaction hash ${result.value}")
+                }
+                else -> { }
+            }
+        }
+    }
+
+    //User buyout asset
+    fun buyout(assetId: Int, buyoutAmount: BigInteger) {
+        val buyoutFunction = Function(
+            "buyout",
+            listOf(Uint256(assetId.toBigInteger())),
+            emptyList()
+        )
+        val encodedFunction = FunctionEncoder.encode(buyoutFunction)
+
+        val params: Map<String, Any> = mutableMapOf(
+            "from" to address,
+            "to" to CONTRACT_ADDRESS,
+            "value" to buyoutAmount.toString(16),
+            "data" to encodedFunction
+        )
+
+        val sendTransactionRequest = EthereumRequest(
+            method = EthereumMethod.ETH_SEND_TRANSACTION.value,
+            params = listOf(params)
+        )
+
+        ethereum.connectWith(sendTransactionRequest) { result ->
+            when(result) {
+                is Result.Error -> {
+                    Log.e("FAIL", "ViewModel.buyout() Error ${result.error.message}")
+                }
+                is Result.Success.Item -> {
+                    Log.i("INFO","ViewModel.buyout() Buyout successful, transaction hash ${result.value}")
+                }
+                else -> { }
+            }
+        }
+    }
+
+    //User list his asset for auction
+    fun listAssetForAuction(assetId: Int, buyoutPrice: BigInteger, auctionEndTime: BigInteger,) {
+        val listFunction = Function(
+            "listAssetForAuction",
+            listOf(
+                Uint256(assetId.toBigInteger()),
+                Uint256(buyoutPrice),
+                Uint256(auctionEndTime)
+            ),
+            emptyList()
+        )
+        val encodedFunction = FunctionEncoder.encode(listFunction)
+
+        val params: Map<String, Any> = mutableMapOf(
+            "from" to address,
+            "to" to CONTRACT_ADDRESS,
+            "data" to encodedFunction
+        )
+
+        val sendTransactionRequest = EthereumRequest(
+            method = EthereumMethod.ETH_SEND_TRANSACTION.value,
+            params = listOf(params)
+        )
+
+        ethereum.connectWith(sendTransactionRequest) { result ->
+            when(result) {
+                is Result.Error -> {
+                    Log.e("FAIL", "ViewModel.listAssetForAuction() Error ${result.error.message}")
+                }
+                is Result.Success.Item -> {
+                    Log.i("INFO","ViewModel.listAssetForAuction() Listing successful, transaction hash ${result.value}")
+                }
+                else -> { }
+            }
+        }
+    }
+
+    //Fetching asset from smart-contract
+    fun fetchAssetData() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                contract?.let {
+                    assetsDataList = it.allAssets.send() as List<Asset>
+                    parseAsset(assetsDataList)
+                }
+            } catch (e: Exception) {
+                Log.e("FAIL", "ViewModel.fetchNftData() Error fetching Assets ${e.message}")
+            }
+        }
+    }
+
+    //Creation main data of asset and upload to Pinata
+    fun createAsset(imageFile: File, name: String, description: String) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val client = OkHttpClient()
@@ -109,64 +312,108 @@ class ViewModel @Inject constructor(private val ethereum: Ethereum): ViewModel()
 
                 uploadStatus = "NFT metadata uploaded: ipfs://$metadataHash"
 
-                nftDataList = nftDataList + "ipfs://$metadataHash"
-
-                mintNFT("ipfs://$metadataHash") { uiStatus = "NFTListScreen" }
+                mintAsset("ipfs://$metadataHash") { uiStatus = "NFTListScreen" }
 
             } catch (e: Exception) {
                 uploadStatus = "Upload failed: ${e.message}"
-                Log.e("TESTWALLET", uploadStatus.toString())
+                Log.e("FAIL", "ViewModel.createAsset() $uploadStatus")
             }
         }
     }
 
-    fun parseNft(nftDataList: List<String>){
+    //Parse asset from Pinata buy assetsDataList from smart-contract
+    fun parseAsset(assetsDataList: List<Asset>){
         viewModelScope.launch(Dispatchers.IO) {
             val client = OkHttpClient()
 
-            val jobs: List<Deferred<TestItem?>> = nftDataList.map { nftData ->
+            val jobs: List<Deferred<AssetData?>> = assetsDataList.map { assetData ->
                 async {
-                    parseSingleNFTWithRetry(nftData, client)
+                    parseSingleAssetWithRetry(assetData, client)
                 }
             }
 
             val resultList = jobs.awaitAll().filterNotNull()
 
-            _parsedNFTs.value = resultList// = resultList
-            parseStatus = if (resultList.size == nftDataList.size) {
-                "Parsing complete. Parsed all ${resultList.size} items."
+            _parsedAssets.value = resultList
+            parseStatus = if (resultList.size == assetsDataList.size) {
+                "Parsing complete. Parsed all ${resultList.size} assets."
             } else {
-                "Parsing complete. Parsed ${resultList.size} out of ${nftDataList.size} items."
+                "Parsing complete. Parsed ${resultList.size} out of ${assetsDataList.size} assets."
             }
         }
     }
 
-    fun fetchNftData() {
-        parseNft(nftDataList)
-    }
-
-    fun mintNFT(tokenURI: String, onSuccess: () -> Unit) {
-
-    }
-
+    //Change ui state to continue without wallet connection
     fun onContinueWithoutWalletClick() {
         _uiState.value = _uiState.value.copy(continueWithoutWallet = true)
     }
 
+    //Reset Ui state to back to wallet connect screen
     fun resetWalletConnectUiState() {
         _uiState.value = _uiState.value.copy(continueWithoutWallet = false)
         _uiState.value = _uiState.value.copy(walletConnected = false)
     }
 
+    //Logout from account
     fun logOut(){
         resetWalletConnectUiState()
         address = ""
         ethereum.clearSession()
     }
 
-    //help-method to parse nft from pinata
-    suspend fun parseSingleNFTWithRetry(nftData: String, client: OkHttpClient): TestItem? {
-        val jsonUrl = nftData.replace("ipfs://", "https://gateway.pinata.cloud/ipfs/")//nftData.tokenURI.replace("ipfs://", "https://gateway.pinata.cloud/ipfs/")
+    //Initialization Event Listeners
+    private fun initEventListeners() {
+        contract?.let { contract ->
+
+            //Event Listener on asset mint
+            contract.assetMintedEventFlowable(DefaultBlockParameterName.EARLIEST, DefaultBlockParameterName.LATEST)
+                .subscribe({ event ->
+                    viewModelScope.launch {
+                        Log.i("EVENT", "AssetMinted: ${event.assetId}, ${event.uri}, ${event.owner}")
+                        //за uri отримуєм назву, опис, зображення та додаєм до _parsedAssets//_parsedAssets.apply { AssetData(event.assetId, event.uri, event.owner) }
+                    }
+                }, { error ->
+                    Log.e("EVENT_ERROR", "AssetMinted listener error", error)
+                }).let { disposable -> compositeDisposable.add(disposable as Disposable) }
+
+            //Event Listener on asset list for auction
+            contract.assetListedForAuctionEventFlowable(DefaultBlockParameterName.EARLIEST, DefaultBlockParameterName.LATEST)
+                .subscribe({ event ->
+                    viewModelScope.launch {
+                        Log.i("EVENT", "AssetListedForAuction: ${event.assetId}, ${event.buyoutPrice}, ${event.auctionDuration}")
+                        //find asset by event.assetId in _parsedAssets to update buyoutPrice and auctionDuration
+                    }
+                }, { error ->
+                    Log.e("EVENT_ERROR", "AssetListedForAuction listener error", error)
+                }).let { disposable -> compositeDisposable.add(disposable as Disposable) }
+
+            //Event Listener on place bid
+            contract.bidPlacedEventFlowable(DefaultBlockParameterName.EARLIEST, DefaultBlockParameterName.LATEST)
+                .subscribe({ event ->
+                    viewModelScope.launch {
+                        Log.i("EVENT", "BidPlaced: ${event.assetId}, ${event.bidder}, ${event.amount}")
+                        //find asset by event.assetId in _parsedAssets to update bidder and amount
+                    }
+                }, { error ->
+                    Log.e("EVENT_ERROR", "BidPlaced listener error", error)
+                }).let { disposable -> compositeDisposable.add(disposable as Disposable) }
+
+            //Event Listener on bought asset
+            contract.assetBoughtEventFlowable(DefaultBlockParameterName.EARLIEST, DefaultBlockParameterName.LATEST)
+                .subscribe({ event ->
+                    viewModelScope.launch {
+                        Log.i("EVENT", "AssetBought: ${event.assetId}, ${event.buyer}, ${event.amount}")
+                        //find asset by event.assetId in _parsedAssets to update owner and reset buyoutPrice, auctionEndTime, highestBid, highestBidder
+                    }
+                }, { error ->
+                    Log.e("EVENT_ERROR", "AssetBought listener error", error)
+                }).let { disposable -> compositeDisposable.add(disposable as Disposable) }
+        }
+    }
+
+    //help-method to parse asset from pinata
+    suspend fun parseSingleAssetWithRetry(assetData: Asset, client: OkHttpClient): AssetData? {
+        val jsonUrl = assetData.metaDataUri.replace("ipfs://", "https://gateway.pinata.cloud/ipfs/")
         val imageUrl: String
 
         // Fetch and parse metadata JSON
@@ -174,9 +421,7 @@ class ViewModel @Inject constructor(private val ethereum: Ethereum): ViewModel()
         val json = try {
             JSONObject(jsonResponse.body?.string() ?: return null)
         } catch (e: Exception) {
-            Log.e("TESTWALLET", "Invalid JSON for token " +
-                    /*"${nftData.tokenId}" +*/
-                    ": ${e.message}")
+            Log.e("FAIL", "ViewModel.parseSingleNFTWithRetry() Invalid JSON for asset ${assetData.assetId} ${e.message}")
             return null
         }
 
@@ -188,18 +433,24 @@ class ViewModel @Inject constructor(private val ethereum: Ethereum): ViewModel()
         // Fetch image
         val imageResponse = executeWithRetry(Request.Builder().url(imageUrl).build(), client) ?: return null
         val imageBody = imageResponse.body ?: return null
-        var i = 0
+
         // Save to temp file
         val imageExt = imageUrl.substringAfterLast('.', "jpg").take(5)
-        val safeName = "nft_${i++}_${System.currentTimeMillis()}"
+        val safeName = "asset_${assetData.assetId}_${System.currentTimeMillis()}"
         val tempFile = File.createTempFile(safeName, ".$imageExt").apply {
             outputStream().use { imageBody.byteStream().copyTo(it) }
         }
 
-        return TestItem(
+        return AssetData(
+            assetId = assetData.assetId,
             name = name,
             description = description,
-            imageFile = tempFile
+            imageFile = tempFile,
+            owner = assetData.owner,
+            buyoutPrice = assetData.buyoutPrice,
+            auctionEndTime = assetData.auctionEndTime,
+            highestBid = assetData.highestBid,
+            highestBidder = assetData.highestBidder
         )
     }
 
@@ -207,20 +458,32 @@ class ViewModel @Inject constructor(private val ethereum: Ethereum): ViewModel()
     suspend fun executeWithRetry(request: Request, client: OkHttpClient, maxAttempts: Int = 3): Response? {
         repeat(maxAttempts) { attempt ->
             try {
-                Log.w("TESTWALLET", "Attempt $attempt for URL: ${request.url}")
                 val response = client.newCall(request).execute()
                 if (response.isSuccessful) return response
                 response.close()
             } catch (e: Exception) {
-                Log.e("TESTWALLET", "Network error: ${e.message}")
+                Log.e("FAIL", "ViewModel.executeWithRetry() Network error: ${e.message}")
             }
             delay(500L * 2.0.pow(attempt.toDouble()).toLong()) // exponential backoff
         }
         return null
     }
 
-    data class WalletConnectUiState(
-        val walletConnected: Boolean = false,
-        val continueWithoutWallet: Boolean = false
-    )
+    //help-method to test is contract connected successful
+    private fun checkContractConnection(where: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val name = contract?.name()?.send()
+                Log.d("TEST", "$where + checkContractConnection(): Contract connection check successful, name: $name")
+            } catch (e: Exception) {
+                Log.e("FAIL", "$where + checkContractConnection(): Contract connection check failed: ${e.message}")
+            }
+        }
+    }
+
+    //Clear view model resources
+    override fun onCleared() {
+        compositeDisposable.dispose() //stop all RxJava subscriptions
+        super.onCleared()
+    }
 }

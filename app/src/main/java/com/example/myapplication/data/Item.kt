@@ -3,26 +3,14 @@ package com.example.myapplication.data
 import java.io.File
 import java.math.BigInteger
 
-data class Item(
-    //val tokenId: BigInteger,
+data class AssetData(
+    val assetId: BigInteger,
     val name: String,
     val description: String,
-    //val owner: String,
-    val bid: Int,
-    val buyout: Int,
-    val imageFile: String,//File,
-    val auctionTime: Int
-)
-
-//IPFS
-data class ItemMetadata(
-    val name: String,
-    val description: String,
-    val imageUri: String
-)
-
-data class TestItem(
-    val name: String,
-    val description: String,
-    val imageFile: File
+    val imageFile: File,
+    val owner: String,
+    val buyoutPrice: BigInteger,
+    val auctionEndTime: BigInteger,
+    val highestBid: BigInteger,
+    val highestBidder: String
 )

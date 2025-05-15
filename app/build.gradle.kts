@@ -67,6 +67,7 @@ dependencies {
     implementation("com.google.code.gson:gson:2.9.0")
     implementation("androidx.activity:activity-ktx:1.9.0")
     implementation("io.coil-kt.coil3:coil-compose:3.1.0")
+    implementation("io.reactivex.rxjava3:rxkotlin:3.0.1")
     implementation(libs.web3core)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
