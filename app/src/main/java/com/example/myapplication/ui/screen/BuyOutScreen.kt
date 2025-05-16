@@ -16,27 +16,17 @@ import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.example.myapplication.R
+import com.example.myapplication.data.AssetData
+import com.example.myapplication.viewmodel.ViewModel
+import java.math.BigInteger
 
 @Composable
 fun BuyOutScreen(
-    itemName: String,
+    viewModel: ViewModel,
+    assetId: String,
     navController: NavController
 ) {
-    val item = Item2(
-        name = itemName,
-        description = "Опис предмета: $itemName",
-        bid = 150,
-        buyout = 700,
-        imageUrl = "https://via.placeholder.com/300",
-        auctionTime = 3600,
-        owner = "JohnDoe",
-        wallet = "0x1234567890abcdef",
-        bidHistory = listOf(
-            BidHistory(200, "0xabc123"),
-            BidHistory(250, "0xdef456"),
-            BidHistory(300, "0xghi789")
-        )
-    )
+    val assetData: AssetData? = viewModel.findById(assetId.toBigInteger())
 
     Column(
         modifier = Modifier
@@ -55,7 +45,7 @@ fun BuyOutScreen(
                 )
         ) {
 
-            ImageNameRow(item)
+            ImageNameRow(assetData)
 
             HorizontalDivider(
                 modifier = Modifier.padding(vertical = 8.dp, horizontal = 16.dp),
@@ -63,7 +53,7 @@ fun BuyOutScreen(
                 color = Color.DarkGray
             )
 
-            ItemInfo("Ціна", "5")
+            ItemInfo("Ціна", assetData?.buyoutPrice.toString())
 
             HorizontalDivider(
                 modifier = Modifier.padding(vertical = 8.dp, horizontal = 16.dp),
@@ -71,7 +61,8 @@ fun BuyOutScreen(
                 color = Color.DarkGray
             )
 
-            ItemInfo("Комісія", "0.05")
+            TODO("Комісія???")
+            ItemInfo("Комісія", "1")
 
             HorizontalDivider(
                 modifier = Modifier.padding(vertical = 8.dp, horizontal = 16.dp),
@@ -79,9 +70,14 @@ fun BuyOutScreen(
                 color = Color.DarkGray
             )
 
-            ItemInfo("Загалом", "5.05") //TODO: розрахунок від комісії та введеної ставки вище
+            TODO("розрахунок від комісії та введеної ставки вище")
+            ItemInfo("Загалом", assetData?.buyoutPrice?.add(BigInteger("1")).toString())
 
-            ActionBtn({ /**/ }, "Викупити")
+            ActionBtn({
+                viewModel.buyout(assetId.toBigInteger(),
+                assetData?.buyoutPrice ?: BigInteger("9999"))
+                TODO("EVENT_LISTENER:: Event switch screen ??? or nav")
+                }, "Викупити")
             Spacer(modifier = Modifier.height(8.dp))
         }
     }

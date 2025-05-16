@@ -1,5 +1,6 @@
 package com.example.myapplication.ui.screen
 
+import android.net.Uri
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -32,30 +33,20 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+import coil3.compose.rememberAsyncImagePainter
 import com.example.myapplication.R
+import com.example.myapplication.data.AssetData
+import com.example.myapplication.viewmodel.ViewModel
 
 @Composable
 fun MakeBidScreen(
-    itemName: String,
+    viewModel: ViewModel,
+    assetId: String,
     navController: NavController
 ) {
-
+    val assetData: AssetData? = viewModel.findById(assetId.toBigInteger())
     var bidAmount by remember { mutableStateOf("") }
-    val item = Item2(
-        name = itemName,
-        description = "Опис предмета: $itemName",
-        bid = 150,
-        buyout = 700,
-        imageUrl = "https://via.placeholder.com/300",
-        auctionTime = 3600,
-        owner = "JohnDoe",
-        wallet = "0x1234567890abcdef",
-        bidHistory = listOf(
-            BidHistory(200, "0xabc123"),
-            BidHistory(250, "0xdef456"),
-            BidHistory(300, "0xghi789")
-        )
-    )
+
 
     Column(
         modifier = Modifier
@@ -73,7 +64,7 @@ fun MakeBidScreen(
                     shape = RoundedCornerShape(18.dp)
                 )
         ) {
-            ImageNameRow(item)
+            ImageNameRow(assetData)
 
             Text(
                 text = "Сума ставки",
@@ -93,22 +84,31 @@ fun MakeBidScreen(
 
             Spacer(modifier = Modifier.height(8.dp))
 
+            TODO("Available balance of wallet")
             ItemInfo("Доступний баланс", "7")
-            ItemInfo("Комісія", "0.05")
-            ItemInfo("Загалом", "1.45") //TODO: розрахунок від комісії та введеної ставки вище
 
-            ActionBtn({ /**/ },"Зробити ставку")
+            TODO("Вираховувати комісію???")
+            ItemInfo("Комісія", "0.05")
+
+            ItemInfo("Загалом", bidAmount.plus(0.05))
+
+            ActionBtn({
+                viewModel.placeBid(assetId.toBigInteger(),
+                bidAmount.toBigInteger())
+                TODO("EVENT_LISTENER:: EventListener switch?")
+            },"Зробити ставку")
             Spacer(modifier = Modifier.height(8.dp))
         }
     }
 }
 
 @Composable
-fun ImageNameRow(item: Item2) {
+fun ImageNameRow(asset: AssetData?) {
+    val imageUri = Uri.fromFile(asset?.imageFile)
     Row {
         Image(
-            painter = painterResource(id = R.drawable.nft12),
-            contentDescription = "Item Image",
+            painter = rememberAsyncImagePainter(imageUri),
+            contentDescription = "Asset Image",
             contentScale = ContentScale.Crop,
             modifier = Modifier
                 .size(124.dp)
@@ -117,7 +117,7 @@ fun ImageNameRow(item: Item2) {
         )
         Spacer(modifier = Modifier.width(16.dp))
         Text(
-            text = item.name,
+            text = asset?.name ?: "No Name",
             fontSize = 36.sp,
             modifier = Modifier.padding(top = 14.dp),
             fontWeight = FontWeight.Bold

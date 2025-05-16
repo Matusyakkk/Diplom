@@ -1,5 +1,6 @@
 package com.example.myapplication.ui.screen
 
+import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -43,19 +44,21 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+import coil3.compose.rememberAsyncImagePainter
 import com.example.myapplication.R
 import com.example.myapplication.data.AssetData
 import com.example.myapplication.viewmodel.ViewModel
 
 
 @Composable
-fun ItemsForSaleScreen(
+fun AssetsForSaleScreen(
     viewModel: ViewModel,
     navController: NavController
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val items by viewModel.parsedAssets.collectAsState(initial = emptyList())
+    val assets by viewModel.parsedAssets.collectAsState(initial = emptyList())
     LaunchedEffect(Unit) {
+        TODO("ЦЕ ПОТРІБНО??")
         viewModel.fetchAssetData()
     }
     Scaffold(
@@ -66,7 +69,6 @@ fun ItemsForSaleScreen(
                     .padding(24.dp),
                 horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-
                 if (uiState.walletConnected) {
                     Button(
                         onClick = {
@@ -110,19 +112,21 @@ fun ItemsForSaleScreen(
             }
         }
     ) { innerPadding ->
-
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
                 .padding(end = 16.dp, start = 16.dp)
         ) {
-            TitleIcon("Предмети на продаж", R.drawable.ic_user, navController, viewModel)
-
-            LazyColumn {
-                items(items.size) { index ->
-                    val item = items[index]
-                    ItemRow(item = item, navController)
+            TitleIcon("Предмети на продажі", R.drawable.ic_user, navController, viewModel)
+            if (assets.isEmpty()){
+                Text(text = "Тут пусто...")
+            } else{
+                LazyColumn {
+                    items(assets.size) { index ->
+                        val asset = assets[index]
+                        ItemRow(asset, navController)
+                    }
                 }
             }
         }
@@ -131,8 +135,9 @@ fun ItemsForSaleScreen(
 
 // Компонент для відображення предмета в списку
 @Composable
-fun ItemRow(item: AssetData, navController: NavController) {
+fun ItemRow(asset: AssetData, navController: NavController) {
     var expanded by remember { mutableStateOf(false) }
+    val imageUri = Uri.fromFile(asset.imageFile)
 
     Column(
         modifier = Modifier
@@ -144,8 +149,8 @@ fun ItemRow(item: AssetData, navController: NavController) {
         if (!expanded) {
             Row() {
                 Image(
-                    painter = painterResource(id = R.drawable.nft12),
-                    contentDescription = "Item Image",
+                    painter = rememberAsyncImagePainter(imageUri),
+                    contentDescription = "Asset Image",
                     contentScale = ContentScale.Crop,
                     modifier = Modifier
                         .size(75.dp)
@@ -153,7 +158,7 @@ fun ItemRow(item: AssetData, navController: NavController) {
                 )
                 Spacer(modifier = Modifier.width(16.dp))
                 Text(
-                    text = item.name,
+                    text = asset.name,
                     fontSize = 36.sp,
                     modifier = Modifier.padding(top = 14.dp),
                     fontWeight = FontWeight.Bold
@@ -168,22 +173,22 @@ fun ItemRow(item: AssetData, navController: NavController) {
         ) {
             Column(modifier = Modifier.clip(RoundedCornerShape(18.dp))) {
                 Image(
-                    painter = painterResource(id = R.drawable.nft12),
-                    contentDescription = "Item Image",
+                    painter = rememberAsyncImagePainter(imageUri),
+                    contentDescription = "Asset Image",
                     contentScale = ContentScale.Crop,
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(300.dp)
-                        .clickable { navController.navigate("itemDetail/${item.name}") }
+                        .clickable { navController.navigate("itemDetail/${asset.assetId}") }
                 )
                 Text(
-                    text = item.name,
+                    text = asset.name,
                     style = MaterialTheme.typography.headlineMedium,
                     modifier = Modifier.padding(16.dp),
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = item.description,
+                    text = asset.description,
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(bottom = 16.dp, start = 16.dp)
                 )
@@ -209,7 +214,7 @@ fun TitleIcon(text: String, imageID: Int, navController: NavController, viewMode
             fontWeight = FontWeight.Bold
         )
         Spacer(modifier = Modifier.width(8.dp))
-        if (uiState.walletConnected) {
+        if (uiState.walletConnected && !viewModel.address.isNullOrBlank()) {
             IconButton(onClick = { navController.navigate("profile") }) {
                 Image(
                     painter = painterResource(id = imageID),

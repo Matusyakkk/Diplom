@@ -46,7 +46,7 @@ import java.io.File
 import java.io.FileOutputStream
 
 @Composable
-fun CreateItemScreen(
+fun CreateAssetScreen(
     viewModel: ViewModel,
     navController: NavController
 ) {
@@ -77,7 +77,8 @@ fun CreateItemScreen(
                                 viewModel.createAsset(file, name, description)
                             }
                         }
-                        navController.popBackStack()
+                        TODO("EVENT_LISTENER:: Event Switch or nav??")
+                        //navController.popBackStack()
                     },
                     modifier = Modifier
                         .fillMaxWidth()
@@ -117,7 +118,7 @@ fun CreateItemScreen(
                     imageUri?.let {
                         Image(
                             painter = rememberAsyncImagePainter(it),
-                            contentDescription = "NFT Image",
+                            contentDescription = "Asset Image",
                             contentScale = ContentScale.Crop,
                             modifier = Modifier
                                 .size(124.dp)

@@ -150,10 +150,10 @@ class ViewModel @Inject constructor(private val ethereum: Ethereum): ViewModel()
     }
 
     //User place bid for asset
-    fun placeBid(assetId: Int, bidAmount: BigInteger) {
+    fun placeBid(assetId: BigInteger, bidAmount: BigInteger) {
         val placeBidFunction = Function(
             "placeBid",
-            listOf(Uint256(assetId.toBigInteger())),
+            listOf(Uint256(assetId)),
             emptyList()
         )
         val encodedFunction = FunctionEncoder.encode(placeBidFunction)
@@ -184,10 +184,10 @@ class ViewModel @Inject constructor(private val ethereum: Ethereum): ViewModel()
     }
 
     //User buyout asset
-    fun buyout(assetId: Int, buyoutAmount: BigInteger) {
+    fun buyout(assetId: BigInteger, buyoutAmount: BigInteger) {
         val buyoutFunction = Function(
             "buyout",
-            listOf(Uint256(assetId.toBigInteger())),
+            listOf(Uint256(assetId)),
             emptyList()
         )
         val encodedFunction = FunctionEncoder.encode(buyoutFunction)
@@ -218,11 +218,11 @@ class ViewModel @Inject constructor(private val ethereum: Ethereum): ViewModel()
     }
 
     //User list his asset for auction
-    fun listAssetForAuction(assetId: Int, buyoutPrice: BigInteger, auctionEndTime: BigInteger,) {
+    fun listAssetForAuction(assetId: BigInteger, buyoutPrice: BigInteger, auctionEndTime: BigInteger,) {
         val listFunction = Function(
             "listAssetForAuction",
             listOf(
-                Uint256(assetId.toBigInteger()),
+                Uint256(assetId),
                 Uint256(buyoutPrice),
                 Uint256(auctionEndTime)
             ),
@@ -486,4 +486,39 @@ class ViewModel @Inject constructor(private val ethereum: Ethereum): ViewModel()
         compositeDisposable.dispose() //stop all RxJava subscriptions
         super.onCleared()
     }
+
+    //Find asset by id
+    fun findById(assetId: BigInteger): AssetData? {
+        return _parsedAssets.value.find { it.assetId == assetId }
+    }
+
+    //Find all not listed for auction assets where user address == owner (Моя колекція)
+    fun findAssetsOwnedByUser(): List<AssetData> {
+        return _parsedAssets.value.filter {
+            it.owner == address && it.auctionEndTime == 0.toBigInteger()
+        }
+    }
+
+    //Find all listed for auction assets where user address == owner (Мої предмети на продажі)
+    fun findAssetsListedByUser(): List<AssetData> {
+        return _parsedAssets.value.filter {
+            it.owner == address && it.auctionEndTime != 0.toBigInteger()
+        }
+    }
+
+    //Find all assets where user address == highest bidder (Мої ставки)
+    fun findAssetsByHighestBidder(): List<AssetData> {
+        return _parsedAssets.value.filter { it.highestBidder == address }
+    }
+
+    //Function to show only part of address
+    fun shortenAddress(addressToCut: String): String {
+        return if (addressToCut != null && addressToCut.length > 10) {
+            "${addressToCut.take(5)}...${addressToCut.takeLast(3)}"
+        } else {
+            addressToCut ?: "No Address"
+        }
+    }
+
+    fun isUserOwnerOrHighestBidder(asset: AssetData?) = address != asset?.owner && address != asset?.highestBidder
 }

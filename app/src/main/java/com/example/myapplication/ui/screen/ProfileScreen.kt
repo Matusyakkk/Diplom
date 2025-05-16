@@ -1,6 +1,6 @@
 package com.example.myapplication.ui.screen
 
-import androidx.annotation.DrawableRes
+import android.net.Uri
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -27,6 +27,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -54,7 +55,9 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+import coil3.compose.rememberAsyncImagePainter
 import com.example.myapplication.R
+import com.example.myapplication.data.AssetData
 import com.example.myapplication.viewmodel.ViewModel
 import kotlin.math.roundToInt
 
@@ -75,7 +78,7 @@ fun ProfileScreen(
         ProfileInformation(viewModel)
 
         //Дані під інформацією профілю
-        TabsInProfile(navController)
+        TabsInProfile(viewModel, navController)
 
     }
 }
@@ -87,7 +90,7 @@ fun TopBar(viewModel: ViewModel, navController: NavController? = null) {
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.Start
     ) {
-        IconButton(onClick = { navController?.popBackStack() }) {
+        IconButton(onClick = { navController?.navigate("itemList") }) {
             Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
         }
         Row(
@@ -102,11 +105,13 @@ fun TopBar(viewModel: ViewModel, navController: NavController? = null) {
             )
             Spacer(modifier = Modifier.width(8.dp))
             IconButton(onClick = {
-                viewModel.logOut()
-                navController?.navigate("walletConnect")
+                if(!viewModel.address.isNullOrBlank()) {
+                    viewModel.logOut()
+                    navController?.navigate("walletConnect")
+                }
             }) {
                 Image(
-                    painter = painterResource(id = R.drawable.ic_user),
+                    imageVector = Icons.AutoMirrored.Filled.ExitToApp,
                     contentDescription = "Перехід на профіль"
                 )
             }
@@ -145,12 +150,12 @@ fun ProfileInformation(viewModel: ViewModel) {
             verticalAlignment = Alignment.Bottom
         ) {
             Text(
-                text = "Jake",
+                text = "Address",
                 modifier = Modifier.padding(16.dp),
                 style = MaterialTheme.typography.headlineLarge
             )
             Text(
-                text = viewModel.address,
+                text = viewModel.shortenAddress(viewModel.address),
                 style = MaterialTheme.typography.bodyLarge,
                 modifier = Modifier.padding(16.dp),
                 color = Color.Gray
@@ -161,18 +166,7 @@ fun ProfileInformation(viewModel: ViewModel) {
 
 //Дані під інформацією профілю
 @Composable
-fun TabsInProfile(navController: NavController) {
-    val sampleItems = listOf(
-        Item3("Собака", "Чудовий песик", 5, R.drawable.nft12),
-        Item3("Кіт", "Муркотик", 5, R.drawable.nft13),
-        Item3("Папуга", "Говорить більше за тебе", 5, R.drawable.nft1337),
-        Item3("Кіт", "Муркотик", 5, R.drawable.nft13),
-        Item3("Собака", "Чудовий песик", 5, R.drawable.nft12),
-        Item3("Кіт", "Муркотик", 5, R.drawable.nft13),
-        Item3("Папуга", "Говорить більше за тебе", 5, R.drawable.nft1337),
-        Item3("Кіт", "Муркотик", 5, R.drawable.nft13),
-        Item3("Папуга", "Говорить більше за тебе", 5, R.drawable.nft1337)
-    )
+fun TabsInProfile(viewModel: ViewModel, navController: NavController) {
 
     val tabs = listOf("Мої предмети", "На продажі", "Мої ставки")
     var selectedTabIndex by remember { mutableStateOf(0) }
@@ -234,7 +228,7 @@ fun TabsInProfile(navController: NavController) {
             Box(
                 modifier = Modifier
                     .offset(x = indicatorOffsetX + startPadding)
-                    .padding(top = 36.dp) // Відступ від тексту
+                    .padding(top = 36.dp)
                     .height(2.dp)
                     .width(indicatorWidth)
                     .background(MaterialTheme.colorScheme.primary)
@@ -249,17 +243,11 @@ fun TabsInProfile(navController: NavController) {
 
         //Списки
         when (tabs[selectedTabIndex]) {
-            "Мої предмети" -> {
-                TabContentGrid(items3 = sampleItems)
-            }
+            "Мої предмети" -> TabContentGrid(viewModel.findAssetsOwnedByUser(), navController)
 
-            "На продажі" -> {
-                ListItemRowOnSale(items3 = sampleItems, navController)
-            }
+            "На продажі" -> ListAssetRowOnSale(viewModel.findAssetsListedByUser(), navController)
 
-            "Мої ставки" -> {
-                ListItemRowOnSale(items3 = sampleItems, navController)
-            }
+            "Мої ставки" -> ListAssetRowOnSale(viewModel.findAssetsByHighestBidder(), navController)
         }
     }
 }
@@ -267,25 +255,30 @@ fun TabsInProfile(navController: NavController) {
 
 //Мої предмети
 @Composable
-fun TabContentGrid(items3: List<Item3>, navController: NavController? = null) {
-    LazyVerticalGrid(
-        columns = GridCells.Fixed(3),
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(8.dp, top = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        contentPadding = PaddingValues(bottom = 16.dp)
-    ) {
-        items(items3.size) { index ->
-            val item = items3[index]
-            ItemCard(item = item, navController = navController)
+fun TabContentGrid(assetsOwnedByUser: List<AssetData>, navController: NavController? = null) {
+    if (assetsOwnedByUser.isEmpty()){
+        Text(text = "Тут ще немає активів")
+    } else{
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(3),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(8.dp, top = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            contentPadding = PaddingValues(bottom = 16.dp)
+        ) {
+            items(assetsOwnedByUser.size) { index ->
+                val asset = assetsOwnedByUser[index]
+                AssetCard(asset, navController)
+            }
         }
     }
 }
 
 @Composable
-fun ItemCard(item: Item3, navController: NavController? = null) {
+fun AssetCard(asset: AssetData, navController: NavController? = null) {
+    val imageUri = Uri.fromFile(asset.imageFile)
     Column(
         modifier = Modifier
             .background(
@@ -294,25 +287,25 @@ fun ItemCard(item: Item3, navController: NavController? = null) {
             )
             .clip(RoundedCornerShape(18.dp))
             .clickable {
-                navController?.navigate("itemDetail/${item.name}")
+                navController?.navigate("listAsset/${asset.assetId}")
             }
     ) {
         Image(
-            painter = painterResource(id = item.imageRes),
-            contentDescription = "Item Image",
+            painter = rememberAsyncImagePainter(imageUri),
+            contentDescription = "Asset Image",
             contentScale = ContentScale.Crop,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(100.dp) // ⬅️ нижча, щоб вміщувалось більше
+                .height(100.dp)
         )
         Text(
-            text = item.name,
+            text = asset.name,
             style = MaterialTheme.typography.bodyLarge,
             fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(8.dp)
         )
         Text(
-            text = item.description,
+            text = asset.description,
             style = MaterialTheme.typography.bodySmall,
             modifier = Modifier.padding(start = 8.dp, bottom = 8.dp, end = 8.dp)
         )
@@ -322,19 +315,24 @@ fun ItemCard(item: Item3, navController: NavController? = null) {
 
 //На продажі ТА Мої Ставки
 @Composable
-fun ListItemRowOnSale(items3: List<Item3>, navController: NavController? = null){
-    LazyColumn(
-        modifier = Modifier.padding(top = 8.dp)
-    ) {
-        items(items3.size) { index ->
-            val item = items3[index]
-            ItemRowOnSale(item = item, navController)
+fun ListAssetRowOnSale(assets: List<AssetData>, navController: NavController? = null){
+    if (assets.isEmpty()){
+        Text(text = "Тут ще немає активів")
+    } else{
+        LazyColumn(
+            modifier = Modifier.padding(top = 8.dp)
+        ) {
+            items(assets.size) { index ->
+                val asset = assets[index]
+                AssetRowOnSale(asset, navController)
+            }
         }
     }
 }
 
 @Composable
-fun ItemRowOnSale(item: Item3, navController: NavController? = null) {
+fun AssetRowOnSale(asset: AssetData, navController: NavController? = null) {
+    val imageUri = Uri.fromFile(asset.imageFile)
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -342,10 +340,10 @@ fun ItemRowOnSale(item: Item3, navController: NavController? = null) {
             .background(color = colorResource(R.color.ListBG), shape = RoundedCornerShape(18.dp))
     ) {
         Row(modifier = Modifier
-            .clickable {navController?.navigate("itemDetail/${item.name}")}) {
+            .clickable {navController?.navigate("itemDetail/${asset.assetId}")}) {
             Image(
-                painter = painterResource(id = item.imageRes),
-                contentDescription = "Item Image",
+                painter = rememberAsyncImagePainter(imageUri),
+                contentDescription = "Asset Image",
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .size(75.dp)
@@ -356,18 +354,17 @@ fun ItemRowOnSale(item: Item3, navController: NavController? = null) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth(),
-                    //.padding(vertical = 4.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.Bottom
             ) {
                 Text(
-                    text = item.name,
+                    text = asset.name,
                     fontSize = 36.sp,
                     modifier = Modifier.padding(top = 14.dp),
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "${item.bidAmount} ETH",
+                    text = "${asset.highestBid} ETH",
                     fontSize = 22.sp,
                     modifier = Modifier.padding(top = 14.dp, end = 16.dp),
                     color = Color.Gray
@@ -376,13 +373,5 @@ fun ItemRowOnSale(item: Item3, navController: NavController? = null) {
         }
     }
 }
-
-
-data class Item3(
-    val name: String,
-    val description: String,
-    val bidAmount: Int,
-    @DrawableRes val imageRes: Int
-)
 
 fun Offset.toIntOffset() = IntOffset(x.roundToInt(), y.roundToInt())
