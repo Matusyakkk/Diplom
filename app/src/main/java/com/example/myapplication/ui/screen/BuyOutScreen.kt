@@ -10,6 +10,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.colorResource
@@ -18,6 +21,7 @@ import androidx.navigation.NavController
 import com.example.myapplication.R
 import com.example.myapplication.data.AssetData
 import com.example.myapplication.viewmodel.ViewModel
+import com.example.myapplication.viewmodel.ViewModel.NavigationEvent
 import java.math.BigInteger
 
 @Composable
@@ -26,6 +30,19 @@ fun BuyOutScreen(
     assetId: String,
     navController: NavController
 ) {
+    // Спостерігаємо за подією навігації через StateFlow
+    val navigationEvent by viewModel.navigationEvent.collectAsState()
+
+    // Якщо подія настане, виконуємо навігацію
+    LaunchedEffect(navigationEvent) {
+        when (navigationEvent) {
+            is NavigationEvent.GoToProfileScreen -> {
+                navController.navigate("profile")
+                viewModel.onEventHandled()  // Очищаємо подію після навігації
+            }
+            else -> Unit
+        }
+    }
     val assetData: AssetData? = viewModel.findById(assetId.toBigInteger())
 
     Column(
@@ -76,7 +93,7 @@ fun BuyOutScreen(
             ActionBtn({
                 viewModel.buyout(assetId.toBigInteger(),
                 assetData?.buyoutPrice ?: BigInteger("9999"))
-                TODO("EVENT_LISTENER:: Event switch screen ??? or nav")
+                //TO-DO("EVENT_LISTENER:: Event switch screen ??? or nav")
                 }, "Викупити")
             Spacer(modifier = Modifier.height(8.dp))
         }

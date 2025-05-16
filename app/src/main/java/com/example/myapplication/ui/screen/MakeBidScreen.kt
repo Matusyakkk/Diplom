@@ -19,6 +19,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -28,7 +30,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.colorResource
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -37,6 +38,7 @@ import coil3.compose.rememberAsyncImagePainter
 import com.example.myapplication.R
 import com.example.myapplication.data.AssetData
 import com.example.myapplication.viewmodel.ViewModel
+import com.example.myapplication.viewmodel.ViewModel.NavigationEvent
 
 @Composable
 fun MakeBidScreen(
@@ -44,6 +46,19 @@ fun MakeBidScreen(
     assetId: String,
     navController: NavController
 ) {
+    // Спостерігаємо за подією навігації через StateFlow
+    val navigationEvent by viewModel.navigationEvent.collectAsState()
+
+    // Якщо подія настане, виконуємо навігацію
+    LaunchedEffect(navigationEvent) {
+        when (navigationEvent) {
+            is NavigationEvent.GoToAssetDetailScreen -> {
+                navController.navigate("itemDetail/${assetId}")
+                viewModel.onEventHandled()  // Очищаємо подію після навігації
+            }
+            else -> Unit
+        }
+    }
     val assetData: AssetData? = viewModel.findById(assetId.toBigInteger())
     var bidAmount by remember { mutableStateOf("") }
 
@@ -95,7 +110,7 @@ fun MakeBidScreen(
             ActionBtn({
                 viewModel.placeBid(assetId.toBigInteger(),
                 bidAmount.toBigInteger())
-                TODO("EVENT_LISTENER:: EventListener switch?")
+                //TO-DO("EVENT_LISTENER:: EventListener switch?")
             },"Зробити ставку")
             Spacer(modifier = Modifier.height(8.dp))
         }

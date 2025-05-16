@@ -23,6 +23,8 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -32,7 +34,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
@@ -40,7 +41,7 @@ import coil3.compose.rememberAsyncImagePainter
 import com.example.myapplication.R
 import com.example.myapplication.data.AssetData
 import com.example.myapplication.viewmodel.ViewModel
-import java.math.BigInteger
+import com.example.myapplication.viewmodel.ViewModel.NavigationEvent
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 
@@ -51,6 +52,19 @@ fun ListAssetScreen(
     assetId: String,
     navController: NavController
 ){
+    // Спостерігаємо за подією навігації через StateFlow
+    val navigationEvent by viewModel.navigationEvent.collectAsState()
+
+    // Якщо подія настане, виконуємо навігацію
+    LaunchedEffect(navigationEvent) {
+        when (navigationEvent) {
+            is NavigationEvent.GoToAssetDetailScreen -> {
+                navController.navigate("itemDetail/${assetId}")
+                viewModel.onEventHandled()  // Очищаємо подію після навігації
+            }
+            else -> Unit
+        }
+    }
     val assetData: AssetData? = viewModel.findById(assetId.toBigInteger())
     var buyuot by remember { mutableStateOf("0") }
     val imageUri = Uri.fromFile(assetData?.imageFile)
@@ -75,9 +89,7 @@ fun ListAssetScreen(
                             buyuot.toBigInteger(),
                             auctionEndTimeBigInt.toBigInteger()
                         )
-                        TODO("EVENT_LISTENER:: listener screen switch??")
-                        //List asset and back to Asset Details screen
-                        //navController.popBackStack()
+                        //TO-DO("EVENT_LISTENER:: listener screen switch??")
                     },
                     modifier = Modifier
                         .fillMaxWidth()

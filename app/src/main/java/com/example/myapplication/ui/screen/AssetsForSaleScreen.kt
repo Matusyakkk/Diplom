@@ -58,7 +58,6 @@ fun AssetsForSaleScreen(
     val uiState by viewModel.uiState.collectAsState()
     val assets by viewModel.parsedAssets.collectAsState(initial = emptyList())
     LaunchedEffect(Unit) {
-        TODO("ЦЕ ПОТРІБНО??")
         viewModel.fetchAssetData()
     }
     Scaffold(

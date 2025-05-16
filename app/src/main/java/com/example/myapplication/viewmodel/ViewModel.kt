@@ -26,6 +26,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import javax.inject.Inject
 import kotlinx.coroutines.launch
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
@@ -51,7 +52,7 @@ import kotlin.math.pow
 
 var CONTRACT_ADDRESS = "123"
 
-@HiltViewModel //TODO: EventListeners
+@HiltViewModel
 class ViewModel @Inject constructor(private val ethereum: Ethereum): ViewModel() {
 
     // is wallet connected state
@@ -67,6 +68,10 @@ class ViewModel @Inject constructor(private val ethereum: Ethereum): ViewModel()
 
     //Smart-contract
     private var contract: MyTokenizedAssets ?= null
+
+    //Navigation event
+    private val _navigationEvent = MutableStateFlow<NavigationEvent?>(null)
+    val navigationEvent: StateFlow<NavigationEvent?> = _navigationEvent
 
     //wallet address connected
     var address by mutableStateOf("")
@@ -87,12 +92,13 @@ class ViewModel @Inject constructor(private val ethereum: Ethereum): ViewModel()
             ethereum.connect {
                 address = ethereum.selectedAddress
                 if (!address.isNullOrBlank()) {
-                    _uiState.value = _uiState.value.copy(walletConnected = true)
                     //create contract
                     createContract(address)
                     checkContractConnection("ViewModel.connectWallet()")
                     //fetch data
                     contract?.let { fetchAssetData() }
+                    //navigate to
+                    _uiState.value = _uiState.value.copy(walletConnected = true)
                 } else {
                     Log.e("TESTWALLET", "Failed to connect to wallet")
                 }
@@ -142,7 +148,7 @@ class ViewModel @Inject constructor(private val ethereum: Ethereum): ViewModel()
                     val transactionHash = result.value
                     Log.i("INFO","ViewModel.mintAsset() Mint successful, transaction hash $transactionHash")
                     onSuccess()
-                    fetchAssetData()
+                    //fetchAssetData()
                 }
                 else -> {  }
             }
@@ -370,7 +376,23 @@ class ViewModel @Inject constructor(private val ethereum: Ethereum): ViewModel()
                 .subscribe({ event ->
                     viewModelScope.launch {
                         Log.i("EVENT", "AssetMinted: ${event.assetId}, ${event.uri}, ${event.owner}")
-                        //за uri отримуєм назву, опис, зображення та додаєм до _parsedAssets//_parsedAssets.apply { AssetData(event.assetId, event.uri, event.owner) }
+                        val newAsset = Asset(
+                            event.assetId,
+                            event.uri,
+                            event.owner,
+                            BigInteger("0"),
+                            BigInteger("0"),
+                            BigInteger("0"),
+                            "0x0000000000000000000000000000000000000000"
+                        )
+                        val newAssetData = parseSingleAssetWithRetry(newAsset, OkHttpClient()) ?: AssetData()
+                        _parsedAssets.update { it + newAssetData }
+                        _navigationEvent.value = NavigationEvent.GoToProfileScreen
+
+                        // Повільне повне оновлення у фоновому потоці
+                        launch(Dispatchers.Default) {
+                            fetchAssetData() // Для гарантії актуальності
+                        }
                     }
                 }, { error ->
                     Log.e("EVENT_ERROR", "AssetMinted listener error", error)
@@ -382,6 +404,16 @@ class ViewModel @Inject constructor(private val ethereum: Ethereum): ViewModel()
                     viewModelScope.launch {
                         Log.i("EVENT", "AssetListedForAuction: ${event.assetId}, ${event.buyoutPrice}, ${event.auctionDuration}")
                         //find asset by event.assetId in _parsedAssets to update buyoutPrice and auctionDuration
+                        _parsedAssets.update { assets ->
+                            assets.map { asset ->
+                                if (asset.assetId == event.assetId) {
+                                    asset.copy(buyoutPrice = event.buyoutPrice, auctionEndTime = event.auctionDuration)
+                                } else asset
+                            }
+                        }
+                        _navigationEvent.value = NavigationEvent.GoToAssetDetailScreen
+
+                        fetchAssetData()
                     }
                 }, { error ->
                     Log.e("EVENT_ERROR", "AssetListedForAuction listener error", error)
@@ -393,6 +425,16 @@ class ViewModel @Inject constructor(private val ethereum: Ethereum): ViewModel()
                     viewModelScope.launch {
                         Log.i("EVENT", "BidPlaced: ${event.assetId}, ${event.bidder}, ${event.amount}")
                         //find asset by event.assetId in _parsedAssets to update bidder and amount
+                        _parsedAssets.update { assets ->
+                            assets.map { asset ->
+                                if (asset.assetId == event.assetId) {
+                                    asset.copy(highestBid = event.amount, highestBidder = event.bidder)
+                                } else asset
+                            }
+                        }
+                        _navigationEvent.value = NavigationEvent.GoToAssetDetailScreen
+
+                        fetchAssetData()
                     }
                 }, { error ->
                     Log.e("EVENT_ERROR", "BidPlaced listener error", error)
@@ -404,6 +446,25 @@ class ViewModel @Inject constructor(private val ethereum: Ethereum): ViewModel()
                     viewModelScope.launch {
                         Log.i("EVENT", "AssetBought: ${event.assetId}, ${event.buyer}, ${event.amount}")
                         //find asset by event.assetId in _parsedAssets to update owner and reset buyoutPrice, auctionEndTime, highestBid, highestBidder
+                        _parsedAssets.update { assets ->
+                            assets.map { asset ->
+                                if (asset.assetId == event.assetId) {
+                                    asset.copy(
+                                        owner = event.buyer,
+                                        buyoutPrice = BigInteger.ZERO,
+                                        auctionEndTime = BigInteger.ZERO,
+                                        highestBid = BigInteger.ZERO,
+                                        highestBidder = "0x0000000000000000000000000000000000000000"
+                                    )
+                                } else asset
+                            }
+                        }
+                        _navigationEvent.value = NavigationEvent.GoToProfileScreen
+
+                        // Повільне повне оновлення у фоновому потоці
+                        launch(Dispatchers.Default) {
+                            fetchAssetData() // Для гарантії актуальності
+                        }
                     }
                 }, { error ->
                     Log.e("EVENT_ERROR", "AssetBought listener error", error)
@@ -488,37 +549,45 @@ class ViewModel @Inject constructor(private val ethereum: Ethereum): ViewModel()
     }
 
     //Find asset by id
-    fun findById(assetId: BigInteger): AssetData? {
-        return _parsedAssets.value.find { it.assetId == assetId }
-    }
+    fun findById(assetId: BigInteger) = _parsedAssets.value.find { it.assetId == assetId }
 
     //Find all not listed for auction assets where user address == owner (Моя колекція)
-    fun findAssetsOwnedByUser(): List<AssetData> {
-        return _parsedAssets.value.filter {
+    fun findAssetsOwnedByUser() = _parsedAssets.value.filter {
             it.owner == address && it.auctionEndTime == 0.toBigInteger()
         }
-    }
 
     //Find all listed for auction assets where user address == owner (Мої предмети на продажі)
-    fun findAssetsListedByUser(): List<AssetData> {
-        return _parsedAssets.value.filter {
+    fun findAssetsListedByUser() = _parsedAssets.value.filter {
             it.owner == address && it.auctionEndTime != 0.toBigInteger()
         }
-    }
 
     //Find all assets where user address == highest bidder (Мої ставки)
-    fun findAssetsByHighestBidder(): List<AssetData> {
-        return _parsedAssets.value.filter { it.highestBidder == address }
-    }
+    fun findAssetsByHighestBidder() = _parsedAssets.value.filter { it.highestBidder == address }
 
     //Function to show only part of address
-    fun shortenAddress(addressToCut: String): String {
-        return if (addressToCut != null && addressToCut.length > 10) {
+    fun shortenAddress(addressToCut: String) =
+        if (addressToCut.length > 10)
             "${addressToCut.take(5)}...${addressToCut.takeLast(3)}"
-        } else {
+        else
             addressToCut ?: "No Address"
-        }
+
+    //Return is current user r owner or highestBidder for asset in param
+    fun isUserOwnerOrHighestBidder(asset: AssetData?) = address != asset?.owner && address != asset?.highestBidder
+
+    //Sealed class for navigate by event
+    sealed class NavigationEvent {
+        object GoToAssetDetailScreen : NavigationEvent()
+        object GoToAssetsForSaleScreen : NavigationEvent()
+        object GoToBuyOutScreen : NavigationEvent()
+        object GoToCreateAssetScreen : NavigationEvent()
+        object GoToListAssetScreen : NavigationEvent()
+        object GoToMakeBidScreen : NavigationEvent()
+        object GoToProfileScreen : NavigationEvent()
+        object GoToWalletConnectScreen : NavigationEvent()
     }
 
-    fun isUserOwnerOrHighestBidder(asset: AssetData?) = address != asset?.owner && address != asset?.highestBidder
+    //Clear event state
+    fun onEventHandled() {
+        _navigationEvent.value = null
+    }
 }

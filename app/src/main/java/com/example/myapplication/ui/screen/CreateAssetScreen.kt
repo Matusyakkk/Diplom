@@ -25,6 +25,8 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -42,6 +44,7 @@ import androidx.navigation.NavController
 import com.example.myapplication.R
 import com.example.myapplication.viewmodel.ViewModel
 import coil3.compose.rememberAsyncImagePainter
+import com.example.myapplication.viewmodel.ViewModel.NavigationEvent
 import java.io.File
 import java.io.FileOutputStream
 
@@ -50,6 +53,20 @@ fun CreateAssetScreen(
     viewModel: ViewModel,
     navController: NavController
 ) {
+    // Спостерігаємо за подією навігації через StateFlow
+    val navigationEvent by viewModel.navigationEvent.collectAsState()
+
+    // Якщо подія настане, виконуємо навігацію
+    LaunchedEffect(navigationEvent) {
+        when (navigationEvent) {
+            is NavigationEvent.GoToProfileScreen -> {
+                navController.navigate("profile")
+                viewModel.onEventHandled()  // Очищаємо подію після навігації
+            }
+            else -> Unit
+        }
+    }
+
     val context = LocalContext.current
     var name by remember { mutableStateOf("Назва") }
     var description by remember { mutableStateOf("Опис") }
@@ -77,8 +94,7 @@ fun CreateAssetScreen(
                                 viewModel.createAsset(file, name, description)
                             }
                         }
-                        TODO("EVENT_LISTENER:: Event Switch or nav??")
-                        //navController.popBackStack()
+                        //TO-DO("EVENT_LISTENER:: Event Switch or nav??")
                     },
                     modifier = Modifier
                         .fillMaxWidth()
