@@ -68,6 +68,9 @@ dependencies {
     implementation("androidx.activity:activity-ktx:1.9.0")
     implementation("io.coil-kt.coil3:coil-compose:3.2.0")
     implementation("io.reactivex.rxjava3:rxkotlin:3.0.1")
+    implementation("androidx.compose.material3:material3:1.3.2") // Актуальна версія на момент 2025
+    implementation("androidx.compose.material:material:1.8.2")
+    //implementation("androidx.compose.material:material-pullrefresh:1.1.0")
     implementation(libs.web3core)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
@@ -76,7 +79,7 @@ dependencies {
     implementation(libs.androidx.ui)
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
-    implementation(libs.androidx.material3)
+    //implementation(libs.androidx.material3)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

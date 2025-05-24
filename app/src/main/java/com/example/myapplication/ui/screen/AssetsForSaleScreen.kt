@@ -10,6 +10,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -21,13 +22,20 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.ExperimentalMaterialApi
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -50,16 +58,15 @@ import com.example.myapplication.data.AssetData
 import com.example.myapplication.viewmodel.ViewModel
 
 
+@OptIn(ExperimentalMaterialApi::class)
 @Composable
 fun AssetsForSaleScreen(
     viewModel: ViewModel,
     navController: NavController
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val assets by viewModel.parsedAssets.collectAsState(initial = emptyList())
-    LaunchedEffect(Unit) {
-        viewModel.fetchAssetData()
-    }
+    val assets by viewModel.filteredAssets.collectAsState(initial = emptyList())
+    val searchQuery by viewModel.searchQuery.collectAsState()
     Scaffold(
         bottomBar = {
             Row(
@@ -118,13 +125,40 @@ fun AssetsForSaleScreen(
                 .padding(end = 16.dp, start = 16.dp)
         ) {
             TitleIcon("Предмети на продажі", R.drawable.ic_user, navController, viewModel)
-            if (assets.isEmpty()){
-                Text(text = "Тут пусто...")
-            } else{
-                LazyColumn {
-                    items(assets.size) { index ->
-                        val asset = assets[index]
-                        ItemRow(asset, navController)
+            SearchBar(
+                searchQuery = searchQuery,
+                onQueryChange = { viewModel.updateSearchQuery(it) },
+                onRefreshClick = { viewModel.fetchAssetData() }
+            )
+
+            if (viewModel.isLoading) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator()
+                }
+            } else {
+                if (assets.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "Тут пусто...",
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color.Gray
+                        )
+                    }
+                } else{
+                    LazyColumn {
+                        items(assets.size) { index ->
+                            val asset = assets[index]
+                            ItemRow(asset, navController)
+                        }
                     }
                 }
             }
@@ -223,4 +257,39 @@ fun TitleIcon(text: String, imageID: Int, navController: NavController, viewMode
         }
     }
     Spacer(modifier = Modifier.height(16.dp))
+}
+
+
+@Composable
+fun SearchBar(
+    searchQuery: String,
+    onQueryChange: (String) -> Unit,
+    onRefreshClick: () -> Unit
+) {
+    OutlinedTextField(
+        value = searchQuery,
+        onValueChange = onQueryChange,
+        modifier = Modifier
+            .fillMaxWidth()
+            //.height(56.dp)
+            .padding(bottom = 16.dp),
+        placeholder = { Text("Пошук") },
+        leadingIcon = {
+            Icon(imageVector = Icons.Default.Search, contentDescription = "Пошук")
+        },
+        trailingIcon = {
+            IconButton(onClick = onRefreshClick) {
+                Icon(imageVector = Icons.Default.Refresh, contentDescription = "Оновити")
+            }
+        },
+        singleLine = true,
+        shape = RoundedCornerShape(12.dp),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = MaterialTheme.colorScheme.primary,
+            unfocusedBorderColor = Color.Gray,
+            focusedLabelColor = MaterialTheme.colorScheme.primary,
+            unfocusedLabelColor = Color.Gray,
+            cursorColor = MaterialTheme.colorScheme.primary
+        )
+    )
 }

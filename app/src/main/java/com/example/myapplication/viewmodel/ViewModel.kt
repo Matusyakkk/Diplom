@@ -1,6 +1,8 @@
 package com.example.myapplication.viewmodel
 
+import android.os.Build
 import android.util.Log
+import androidx.annotation.RequiresApi
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -24,11 +26,15 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import javax.inject.Inject
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
@@ -45,15 +51,20 @@ import org.web3j.protocol.Web3j
 import org.web3j.protocol.core.DefaultBlockParameterName
 import org.web3j.protocol.http.HttpService
 import org.web3j.tx.ClientTransactionManager
+import org.web3j.tx.ReadonlyTransactionManager
 import org.web3j.tx.gas.StaticGasProvider
 import java.io.File
 import java.math.BigInteger
+import java.math.BigDecimal
 import kotlin.math.pow
+import java.time.Instant
 
-var CONTRACT_ADDRESS = "123"
+var CONTRACT_ADDRESS = "XXX"
 
 @HiltViewModel
 class ViewModel @Inject constructor(private val ethereum: Ethereum): ViewModel() {
+
+    var isLoading by mutableStateOf(false)
 
     // is wallet connected state
     private val _uiState = MutableStateFlow(WalletConnectUiState())
@@ -66,6 +77,10 @@ class ViewModel @Inject constructor(private val ethereum: Ethereum): ViewModel()
     private val _parsedAssets = MutableStateFlow<List<AssetData>>(emptyList())
     val parsedAssets: StateFlow<List<AssetData>> = _parsedAssets
 
+    //Save search query
+    private val _searchQuery = MutableStateFlow("")
+    val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
+
     //Smart-contract
     private var contract: MyTokenizedAssets ?= null
 
@@ -77,13 +92,11 @@ class ViewModel @Inject constructor(private val ethereum: Ethereum): ViewModel()
     var address by mutableStateOf("")
         private set
 
+    //connected wallet balance
+    var balance by mutableStateOf(BigInteger("0"))
+        private set
+
     private var compositeDisposable = CompositeDisposable()
-    var uploadStatus by mutableStateOf<String?>(null)
-        private set
-    var parseStatus by mutableStateOf<String?>(null)
-        private set
-    var uiStatus by mutableStateOf("ConnectWalletComponent")
-        internal set
 
 
     //Connecting metamask wallet
@@ -96,9 +109,12 @@ class ViewModel @Inject constructor(private val ethereum: Ethereum): ViewModel()
                     createContract(address)
                     checkContractConnection("ViewModel.connectWallet()")
                     //fetch data
+                    Log.i("FETCH","Fetch data connect wallet")
                     contract?.let { fetchAssetData() }
                     //navigate to
                     _uiState.value = _uiState.value.copy(walletConnected = true)
+                    //get balance
+//                    getBalance()
                 } else {
                     Log.e("TESTWALLET", "Failed to connect to wallet")
                 }
@@ -107,23 +123,29 @@ class ViewModel @Inject constructor(private val ethereum: Ethereum): ViewModel()
     }
 
     //Connecting to contract
-    private fun createContract(address: String) {
+    private fun createContract(address: String? = null) {
         if (contract == null) {
             val httpService = HttpService("https://sepolia.infura.io/v3/$INFURA_KEY")
             val web3j = Web3j.build(httpService)
+
+            val transactionManager = if (_uiState.value.continueWithoutWallet){
+                ReadonlyTransactionManager(web3j, CONTRACT_ADDRESS)
+            } else {
+                ClientTransactionManager(web3j, address)
+            }
             contract = MyTokenizedAssets.load(
                 CONTRACT_ADDRESS,
                 web3j,
-                ClientTransactionManager(web3j, address),
+                transactionManager,
                 StaticGasProvider(BigInteger.ZERO, BigInteger.valueOf(16000000))
             )
             checkContractConnection("ViewModel.createContract()")
-            initEventListeners()
+            //initEventListeners()
         }
     }
 
     //Minting asset to block-chain
-    fun mintAsset(assetURI: String, onSuccess: () -> Unit) {
+    fun mintAsset(assetURI: String) {
         val mintFunction = Function(
             "mintAsset",
             listOf(Utf8String(assetURI)),
@@ -147,8 +169,10 @@ class ViewModel @Inject constructor(private val ethereum: Ethereum): ViewModel()
                 is Result.Success.Item -> {
                     val transactionHash = result.value
                     Log.i("INFO","ViewModel.mintAsset() Mint successful, transaction hash $transactionHash")
-                    onSuccess()
-                    //fetchAssetData()
+//                    viewModelScope.launch(Dispatchers.IO) {
+//                        fetchAssetData() // Для гарантії актуальності
+//                    }
+                    _navigationEvent.value = NavigationEvent.GoToProfileScreen
                 }
                 else -> {  }
             }
@@ -183,6 +207,20 @@ class ViewModel @Inject constructor(private val ethereum: Ethereum): ViewModel()
                 }
                 is Result.Success.Item -> {
                     Log.i("INFO","ViewModel.placeBid() Bid placed, transaction hash ${result.value}")
+                    _parsedAssets.update { assets ->
+                        assets.map { asset ->
+                            if (asset.assetId == assetId) {
+                                asset.copy(highestBid = bidAmount, highestBidder = address)
+                            } else asset
+                        }
+                    }
+                    _navigationEvent.value = NavigationEvent.GoToAssetDetailScreen
+
+                    viewModelScope.launch {
+                        delay(1500)
+                        Log.i("FETCH", "Fetch data from place bid....")
+                        fetchAssetData()
+                    }
                 }
                 else -> { }
             }
@@ -217,6 +255,26 @@ class ViewModel @Inject constructor(private val ethereum: Ethereum): ViewModel()
                 }
                 is Result.Success.Item -> {
                     Log.i("INFO","ViewModel.buyout() Buyout successful, transaction hash ${result.value}")
+                    _parsedAssets.update { assets ->
+                        assets.map { asset ->
+                            if (asset.assetId == assetId) {
+                                asset.copy(
+                                    owner = address,
+                                    buyoutPrice = BigInteger.ZERO,
+                                    auctionEndTime = BigInteger.ZERO,
+                                    highestBid = BigInteger.ZERO,
+                                    highestBidder = "0x0000000000000000000000000000000000000000"
+                                )
+                            } else asset
+                        }
+                    }
+                    _navigationEvent.value = NavigationEvent.GoToProfileScreen
+
+                    viewModelScope.launch(Dispatchers.IO) {
+                        delay(1500)
+                        Log.i("FETCH", "Fetch data from buyout....")
+                        fetchAssetData()
+                    }
                 }
                 else -> { }
             }
@@ -224,6 +282,7 @@ class ViewModel @Inject constructor(private val ethereum: Ethereum): ViewModel()
     }
 
     //User list his asset for auction
+    @RequiresApi(Build.VERSION_CODES.O)
     fun listAssetForAuction(assetId: BigInteger, buyoutPrice: BigInteger, auctionEndTime: BigInteger,) {
         val listFunction = Function(
             "listAssetForAuction",
@@ -254,6 +313,22 @@ class ViewModel @Inject constructor(private val ethereum: Ethereum): ViewModel()
                 }
                 is Result.Success.Item -> {
                     Log.i("INFO","ViewModel.listAssetForAuction() Listing successful, transaction hash ${result.value}")
+                    _parsedAssets.update { assets ->
+                        assets.map { asset ->
+                            if (asset.assetId == assetId) {
+                                asset.copy(
+                                    buyoutPrice = buyoutPrice,
+                                    auctionEndTime = (Instant.now().epochSecond.toBigInteger() + auctionEndTime)
+                                )
+                            } else asset
+                        }
+                    }
+                    _navigationEvent.value = NavigationEvent.GoToAssetDetailScreen
+                    viewModelScope.launch(Dispatchers.IO) {
+                        delay(1500)
+                        Log.i("FETCH", "Fetch data from list asset....")
+                        fetchAssetData()
+                    }
                 }
                 else -> { }
             }
@@ -263,16 +338,38 @@ class ViewModel @Inject constructor(private val ethereum: Ethereum): ViewModel()
     //Fetching asset from smart-contract
     fun fetchAssetData() {
         viewModelScope.launch(Dispatchers.IO) {
+            isLoading = true
             try {
                 contract?.let {
                     assetsDataList = it.allAssets.send() as List<Asset>
+                    Log.d("FETCH", "id ${assetsDataList[0].assetId} auctionEndTime ${assetsDataList[0].auctionEndTime}")
+                    Log.d("FETCH", "id ${assetsDataList[1].assetId} auctionEndTime ${assetsDataList[1].auctionEndTime}")
+                    Log.d("FETCH", "id ${assetsDataList[2].assetId} auctionEndTime ${assetsDataList[2].auctionEndTime}")
                     parseAsset(assetsDataList)
+                    Log.i("FETCH","_parsedAssets ${_parsedAssets.value.size} assetsDataList ${assetsDataList.size}")
                 }
             } catch (e: Exception) {
+                isLoading = false
                 Log.e("FAIL", "ViewModel.fetchNftData() Error fetching Assets ${e.message}")
             }
         }
     }
+
+    //Function to upload query entered by user
+    fun updateSearchQuery(query: String) {
+        _searchQuery.value = query
+    }
+
+    //Filter assets by query
+    val filteredAssets: StateFlow<List<AssetData>> = combine(
+        _searchQuery, _parsedAssets
+    ) { query, assets ->
+        assets.filter {
+            (it.auctionEndTime > BigInteger.ZERO) && (
+                it.name.contains(query, ignoreCase = true) || it.description.contains(query, ignoreCase = true)
+            )
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     //Creation main data of asset and upload to Pinata
     fun createAsset(imageFile: File, name: String, description: String) {
@@ -316,13 +413,10 @@ class ViewModel @Inject constructor(private val ethereum: Ethereum): ViewModel()
                 val metaJson = JSONObject(metadataResponse.body?.string() ?: "")
                 val metadataHash = metaJson.getString("IpfsHash")
 
-                uploadStatus = "NFT metadata uploaded: ipfs://$metadataHash"
-
-                mintAsset("ipfs://$metadataHash") { uiStatus = "NFTListScreen" }
+                mintAsset("ipfs://$metadataHash")
 
             } catch (e: Exception) {
-                uploadStatus = "Upload failed: ${e.message}"
-                Log.e("FAIL", "ViewModel.createAsset() $uploadStatus")
+                Log.e("FAIL", "ViewModel.createAsset() Upload failed: ${e.message}")
             }
         }
     }
@@ -341,21 +435,29 @@ class ViewModel @Inject constructor(private val ethereum: Ethereum): ViewModel()
             val resultList = jobs.awaitAll().filterNotNull()
 
             _parsedAssets.value = resultList
-            parseStatus = if (resultList.size == assetsDataList.size) {
-                "Parsing complete. Parsed all ${resultList.size} assets."
+            isLoading = false
+            if (resultList.size == assetsDataList.size) {
+                Log.i("FETCH","Parsing complete. Parsed all ${resultList.size} assets.")
             } else {
-                "Parsing complete. Parsed ${resultList.size} out of ${assetsDataList.size} assets."
+                Log.i("FETCH","Parsing complete. Parsed ${resultList.size} out of ${assetsDataList.size} assets.")
             }
         }
     }
 
     //Change ui state to continue without wallet connection
     fun onContinueWithoutWalletClick() {
-        _uiState.value = _uiState.value.copy(continueWithoutWallet = true)
+        viewModelScope.launch {
+            createContract(null) // Без адреси
+            checkContractConnection("connectWithoutWallet()")
+            Log.i("FETCH", "Fetch data without wallet")
+            contract?.let { fetchAssetData() }
+            _uiState.value = _uiState.value.copy(continueWithoutWallet = true)
+        }
     }
 
     //Reset Ui state to back to wallet connect screen
     fun resetWalletConnectUiState() {
+        contract = null
         _uiState.value = _uiState.value.copy(continueWithoutWallet = false)
         _uiState.value = _uiState.value.copy(walletConnected = false)
     }
@@ -367,109 +469,35 @@ class ViewModel @Inject constructor(private val ethereum: Ethereum): ViewModel()
         ethereum.clearSession()
     }
 
-    //Initialization Event Listeners
-    private fun initEventListeners() {
-        contract?.let { contract ->
+    fun getBalance(): BigDecimal {
+        fetchBalance()
+        return BigDecimal(balance)
+    }
 
-            //Event Listener on asset mint
-            contract.assetMintedEventFlowable(DefaultBlockParameterName.EARLIEST, DefaultBlockParameterName.LATEST)
-                .subscribe({ event ->
-                    viewModelScope.launch {
-                        Log.i("EVENT", "AssetMinted: ${event.assetId}, ${event.uri}, ${event.owner}")
-                        val newAsset = Asset(
-                            event.assetId,
-                            event.uri,
-                            event.owner,
-                            BigInteger("0"),
-                            BigInteger("0"),
-                            BigInteger("0"),
-                            "0x0000000000000000000000000000000000000000"
-                        )
-                        val newAssetData = parseSingleAssetWithRetry(newAsset, OkHttpClient()) ?: AssetData()
-                        _parsedAssets.update { it + newAssetData }
-                        _navigationEvent.value = NavigationEvent.GoToProfileScreen
-
-                        // Повільне повне оновлення у фоновому потоці
-                        launch(Dispatchers.Default) {
-                            fetchAssetData() // Для гарантії актуальності
-                        }
-                    }
-                }, { error ->
-                    Log.e("EVENT_ERROR", "AssetMinted listener error", error)
-                }).let { disposable -> compositeDisposable.add(disposable as Disposable) }
-
-            //Event Listener on asset list for auction
-            contract.assetListedForAuctionEventFlowable(DefaultBlockParameterName.EARLIEST, DefaultBlockParameterName.LATEST)
-                .subscribe({ event ->
-                    viewModelScope.launch {
-                        Log.i("EVENT", "AssetListedForAuction: ${event.assetId}, ${event.buyoutPrice}, ${event.auctionDuration}")
-                        //find asset by event.assetId in _parsedAssets to update buyoutPrice and auctionDuration
-                        _parsedAssets.update { assets ->
-                            assets.map { asset ->
-                                if (asset.assetId == event.assetId) {
-                                    asset.copy(buyoutPrice = event.buyoutPrice, auctionEndTime = event.auctionDuration)
-                                } else asset
-                            }
-                        }
-                        _navigationEvent.value = NavigationEvent.GoToAssetDetailScreen
-
-                        fetchAssetData()
-                    }
-                }, { error ->
-                    Log.e("EVENT_ERROR", "AssetListedForAuction listener error", error)
-                }).let { disposable -> compositeDisposable.add(disposable as Disposable) }
-
-            //Event Listener on place bid
-            contract.bidPlacedEventFlowable(DefaultBlockParameterName.EARLIEST, DefaultBlockParameterName.LATEST)
-                .subscribe({ event ->
-                    viewModelScope.launch {
-                        Log.i("EVENT", "BidPlaced: ${event.assetId}, ${event.bidder}, ${event.amount}")
-                        //find asset by event.assetId in _parsedAssets to update bidder and amount
-                        _parsedAssets.update { assets ->
-                            assets.map { asset ->
-                                if (asset.assetId == event.assetId) {
-                                    asset.copy(highestBid = event.amount, highestBidder = event.bidder)
-                                } else asset
-                            }
-                        }
-                        _navigationEvent.value = NavigationEvent.GoToAssetDetailScreen
-
-                        fetchAssetData()
-                    }
-                }, { error ->
-                    Log.e("EVENT_ERROR", "BidPlaced listener error", error)
-                }).let { disposable -> compositeDisposable.add(disposable as Disposable) }
-
-            //Event Listener on bought asset
-            contract.assetBoughtEventFlowable(DefaultBlockParameterName.EARLIEST, DefaultBlockParameterName.LATEST)
-                .subscribe({ event ->
-                    viewModelScope.launch {
-                        Log.i("EVENT", "AssetBought: ${event.assetId}, ${event.buyer}, ${event.amount}")
-                        //find asset by event.assetId in _parsedAssets to update owner and reset buyoutPrice, auctionEndTime, highestBid, highestBidder
-                        _parsedAssets.update { assets ->
-                            assets.map { asset ->
-                                if (asset.assetId == event.assetId) {
-                                    asset.copy(
-                                        owner = event.buyer,
-                                        buyoutPrice = BigInteger.ZERO,
-                                        auctionEndTime = BigInteger.ZERO,
-                                        highestBid = BigInteger.ZERO,
-                                        highestBidder = "0x0000000000000000000000000000000000000000"
-                                    )
-                                } else asset
-                            }
-                        }
-                        _navigationEvent.value = NavigationEvent.GoToProfileScreen
-
-                        // Повільне повне оновлення у фоновому потоці
-                        launch(Dispatchers.Default) {
-                            fetchAssetData() // Для гарантії актуальності
-                        }
-                    }
-                }, { error ->
-                    Log.e("EVENT_ERROR", "AssetBought listener error", error)
-                }).let { disposable -> compositeDisposable.add(disposable as Disposable) }
+    //fetch balance by smart-contract
+    fun fetchBalance(){
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                contract?.let {
+                    balance = it.getETHBalance(address).send()
+                    Log.i("GETBALANCE", "getBalance(): balace fetched $balance")
+                }
+            } catch (e: Exception) {
+                Log.e("ERROR", "getBalance(): Error getting balance ${e.message}")
+            }
         }
+    }
+
+    //Convert wei balance to ETH
+    fun weiToEth(wei: BigDecimal): BigDecimal {
+        val ethInWei = BigDecimal("1000000000000000000")  // 10^18
+        return wei.divide(ethInWei)
+    }
+
+    //Convert ETH to wei
+    fun ethToWei(eth: BigDecimal): BigDecimal {
+        val ethInWei = BigDecimal("1000000000000000000")  // 10^18
+        return eth.multiply(ethInWei)
     }
 
     //help-method to parse asset from pinata
@@ -502,6 +530,8 @@ class ViewModel @Inject constructor(private val ethereum: Ethereum): ViewModel()
             outputStream().use { imageBody.byteStream().copyTo(it) }
         }
 
+        Log.i("PARSE_FILE", "id = ${assetData.assetId} name $name + auctionEndTime ${assetData.auctionEndTime}")
+
         return AssetData(
             assetId = assetData.assetId,
             name = name,
@@ -518,6 +548,7 @@ class ViewModel @Inject constructor(private val ethereum: Ethereum): ViewModel()
     //help-method to do more try for parse
     suspend fun executeWithRetry(request: Request, client: OkHttpClient, maxAttempts: Int = 3): Response? {
         repeat(maxAttempts) { attempt ->
+            Log.i("PARSE_W_RETRY", "attempt $attempt")
             try {
                 val response = client.newCall(request).execute()
                 if (response.isSuccessful) return response
@@ -553,13 +584,13 @@ class ViewModel @Inject constructor(private val ethereum: Ethereum): ViewModel()
 
     //Find all not listed for auction assets where user address == owner (Моя колекція)
     fun findAssetsOwnedByUser() = _parsedAssets.value.filter {
-            it.owner == address && it.auctionEndTime == 0.toBigInteger()
-        }
+        it.owner == address && it.auctionEndTime == 0.toBigInteger()
+    }
 
     //Find all listed for auction assets where user address == owner (Мої предмети на продажі)
     fun findAssetsListedByUser() = _parsedAssets.value.filter {
-            it.owner == address && it.auctionEndTime != 0.toBigInteger()
-        }
+        it.owner == address && it.auctionEndTime != 0.toBigInteger()
+    }
 
     //Find all assets where user address == highest bidder (Мої ставки)
     fun findAssetsByHighestBidder() = _parsedAssets.value.filter { it.highestBidder == address }
@@ -569,7 +600,7 @@ class ViewModel @Inject constructor(private val ethereum: Ethereum): ViewModel()
         if (addressToCut.length > 10)
             "${addressToCut.take(5)}...${addressToCut.takeLast(3)}"
         else
-            addressToCut ?: "No Address"
+            "No Address"
 
     //Return is current user r owner or highestBidder for asset in param
     fun isUserOwnerOrHighestBidder(asset: AssetData?) = address != asset?.owner && address != asset?.highestBidder

@@ -2,6 +2,7 @@ package com.example.myapplication.ui.screen
 
 import android.net.Uri
 import android.os.Build
+import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -43,6 +44,7 @@ import com.example.myapplication.R
 import com.example.myapplication.data.AssetData
 import com.example.myapplication.viewmodel.ViewModel
 import kotlinx.coroutines.delay
+import java.math.BigDecimal
 import java.time.Instant
 
 // Сторінка деталей предмета
@@ -109,13 +111,13 @@ fun AssetDetailScreen(
                 .padding(horizontal = 16.dp)
         ) {
 
-            BackButton(navController, "Деталі предмета")
+            BackButton(navController, "Деталі предмета", "itemList")
 
             Spacer(modifier = Modifier.height(16.dp))
 
             ImageBlock(assetData)
 
-            DetailsBlock(assetData)
+            DetailsBlock(assetData, viewModel)
 
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -160,30 +162,49 @@ fun ImageBlock(asset: AssetData?) {
 
 @RequiresApi(Build.VERSION_CODES.O)
 @Composable
-fun DetailsBlock(asset: AssetData?) {
+fun DetailsBlock(asset: AssetData?, viewModel: ViewModel) {
     var remainingTime by remember { mutableStateOf(0) }
 
+    val ethHighestBid = viewModel.weiToEth(BigDecimal(asset?.highestBid))
+    val ethBuyoutPrice = viewModel.weiToEth(BigDecimal(asset?.buyoutPrice))
     LaunchedEffect(asset?.auctionEndTime) {
         val auctionEnd = asset?.auctionEndTime ?: 0
-        val currentTime = Instant.now().epochSecond // Поточний час в секундах
-        val diff = auctionEnd.toInt() - currentTime
+        while (true) {
+            val currentTime = Instant.now().epochSecond
+            val diff = auctionEnd.toInt() - currentTime
 
-        // Щоб кожну секунду оновлювати час
-        while (diff > 0) {
+            if (diff <= 0) {
+                remainingTime = 0
+                break
+            }
+
             remainingTime = diff.toInt()
-            delay(1000) // Затримка 1 секунда
+            Log.d("DETAILS_TIME","auction end at $auctionEnd")
+            Log.d("DETAILS_TIME","current time is $currentTime")
+            Log.d("DETAILS_TIME","auction and in $diff (difference)")
+            Log.d("DETAILS_TIME","auction and in $remainingTime (remaining)")
+            Log.d("DETAILS_TIME","...DELAY...")
+            delay(1000)
         }
+//        val currentTime = Instant.now().epochSecond // Поточний час в секундах
+//        val diff = auctionEnd.toInt() - currentTime
+
+//        // Щоб кожну секунду оновлювати час
+//        while (diff > 0) {
+//            remainingTime = diff.toInt()
+//            delay(1000) // Затримка 1 секунда
+//        }
     }
 
     Column(modifier = Modifier.padding(8.dp)) {
         Text(
-            text = "Час до завершення аукціону: ${formatTime(remainingTime)}",
+            text = "Час до завершення: ${formatTime(remainingTime)}",
             style = MaterialTheme.typography.bodyLarge
         )
         Spacer(modifier = Modifier.height(8.dp))
-        Text(text = "Ставка: ${asset?.highestBid ?: 0}", style = MaterialTheme.typography.bodyLarge)
+        Text(text = "Ставка: $ethHighestBid ETH", style = MaterialTheme.typography.bodyLarge)
         Spacer(modifier = Modifier.height(8.dp))
-        Text(text = "Викуп: ${asset?.buyoutPrice ?: 0}", style = MaterialTheme.typography.bodyLarge)
+        Text(text = "Викуп: $ethBuyoutPrice ETH", style = MaterialTheme.typography.bodyLarge)
         Spacer(modifier = Modifier.height(8.dp))
 
         Row(
@@ -197,7 +218,7 @@ fun DetailsBlock(asset: AssetData?) {
                 style = MaterialTheme.typography.bodyLarge
             )
             Text(
-                text = asset?.owner ?: "No Address",
+                text = viewModel.shortenAddress(asset?.owner.toString()),
                 style = MaterialTheme.typography.bodyLarge,
                 color = Color.Gray
             )
@@ -206,12 +227,12 @@ fun DetailsBlock(asset: AssetData?) {
 }
 
 @Composable
-fun BackButton(navController: NavController, text: String) {
+fun BackButton(navController: NavController, text: String, to: String) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.Start
     ) {
-        IconButton(onClick = { navController.popBackStack() }) {
+        IconButton(onClick = { navController.navigate(to) }) {
             Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
         }
         Text(

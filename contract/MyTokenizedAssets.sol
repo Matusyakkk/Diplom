@@ -2,10 +2,9 @@
 pragma solidity 0.8.30;
 
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/Counters.sol";
 
-contract MyTokenizedAssets is ERC721URIStorage, Ownable {
+contract MyTokenizedAssets is ERC721URIStorage {
 
     using Counters for Counters.Counter;
     Counters.Counter private _assetIds;
@@ -14,8 +13,8 @@ contract MyTokenizedAssets is ERC721URIStorage, Ownable {
         uint256 assetId;
         string metaDataUri;
         address owner;
-        uint256 buyoutPrice;
-        uint256 auctionEndTime;
+        uint256 buyoutPrice; //in wei
+        uint256 auctionEndTime; //in seconds
         uint256 highestBid;
         address highestBidder;
     }
@@ -23,14 +22,14 @@ contract MyTokenizedAssets is ERC721URIStorage, Ownable {
     mapping (uint256 => Asset) public assets;
     uint256[] private _allAssetIds;
 
-    constructor() ERC721("MyTokenizedAssets", "MTA") Ownable(msg.sender)  {}
+    constructor() ERC721("MyTokenizedAssets", "MTA") {}
 
     event AssetMinted(uint256 assetId, string uri, address owner);
     event AssetListedForAuction(uint256 assetId, uint256 buyoutPrice, uint256 auctionDuration);
     event BidPlaced(uint256 assetId, address bidder, uint256 amount);
     event AssetBought(uint256 assetId, address buyer, uint256 amount);
 
-    function mintAsset(string memory uri) external onlyOwner  {
+    function mintAsset(string memory uri) external {
         _assetIds.increment();
         uint256 newAssetId = _assetIds.current();
 
@@ -121,5 +120,9 @@ contract MyTokenizedAssets is ERC721URIStorage, Ownable {
 
     function _exists(uint assetId) internal view returns(bool) {
         return _ownerOf(assetId) != address(0);
+    }
+
+    function getETHBalance(address _address) public view returns (uint256) {
+        return _address.balance;
     }
 }

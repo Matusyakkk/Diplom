@@ -1,6 +1,7 @@
 package com.example.myapplication.ui.screen
 
 import android.net.Uri
+import android.widget.Toast
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -29,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -39,6 +41,7 @@ import com.example.myapplication.R
 import com.example.myapplication.data.AssetData
 import com.example.myapplication.viewmodel.ViewModel
 import com.example.myapplication.viewmodel.ViewModel.NavigationEvent
+import java.math.BigDecimal
 
 @Composable
 fun MakeBidScreen(
@@ -60,7 +63,13 @@ fun MakeBidScreen(
         }
     }
     val assetData: AssetData? = viewModel.findById(assetId.toBigInteger())
-    var bidAmount by remember { mutableStateOf("") }
+    val ethHighestBid = viewModel.weiToEth(BigDecimal(assetData?.highestBid))
+    val ethBuyoutPrice = viewModel.weiToEth(BigDecimal(assetData?.buyoutPrice))
+    var ethBidAmount by remember { mutableStateOf("") }
+    var weiBidAmount by remember { mutableStateOf(BigDecimal("0")) }
+    var bidError by remember { mutableStateOf<String?>(null) }
+    val weiBalance = viewModel.getBalance()
+    val ethBalance = viewModel.weiToEth(weiBalance)
 
 
     Column(
@@ -68,7 +77,7 @@ fun MakeBidScreen(
             .fillMaxSize()
             .padding(top = 24.dp, start = 16.dp, end = 16.dp)
     ) {
-        BackButton(navController, "Зробити ставку")
+        BackButton(navController, "Зробити ставку", "itemDetail/${assetId}")
 
         Column(
             modifier = Modifier
@@ -88,30 +97,77 @@ fun MakeBidScreen(
             )
 
             OutlinedTextField(
-                value = bidAmount,
-                onValueChange = { bidAmount = it },
+                value = ethBidAmount,
+                onValueChange = {input ->
+                    if (input.matches(Regex("^\\d*([.,]?\\d*)?\$"))) {
+                        ethBidAmount = input
+                        bidError = null
+                        weiBidAmount = if (input.isBlank()) BigDecimal.ZERO else viewModel.ethToWei(BigDecimal(replaceCommasWithDots(input)))
+                    }
+                },
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp),
                 singleLine = true,
-                shape = RoundedCornerShape(12.dp)
+                isError = bidError != null,
+                shape = RoundedCornerShape(12.dp),
+                label = { Text("ETH") }
             )
+            if (bidError != null) {
+                Text(
+                    text = bidError ?: "",
+                    color = Color.Red,
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(start = 16.dp, top = 4.dp)
+                )
+            }
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            TODO("Available balance of wallet")
-            ItemInfo("Доступний баланс", "7")
+            ItemInfo("Доступний баланс", ethBalance.toString())
+            Spacer(modifier = Modifier.height(8.dp))
 
-            TODO("Вираховувати комісію???")
-            ItemInfo("Комісія", "0.05")
+            ItemInfo("Поточна ставка", ethHighestBid.toString())
 
-            ItemInfo("Загалом", bidAmount.plus(0.05))
+            //Spacer(modifier = Modifier.height(8.dp))
+            Button(
+                onClick = {
+                    when {
+                        weiBidAmount <= BigDecimal(assetData?.highestBid) -> bidError = "Ставка має бути більше ніж: $ethHighestBid"
 
-            ActionBtn({
-                viewModel.placeBid(assetId.toBigInteger(),
-                bidAmount.toBigInteger())
-                //TO-DO("EVENT_LISTENER:: EventListener switch?")
-            },"Зробити ставку")
+                        weiBalance <= weiBidAmount -> bidError = "Недостатньо коштів. Баланс: $ethBalance"
+
+                        weiBidAmount >= BigDecimal(assetData?.buyoutPrice) -> bidError = "Ставка не може бути більшою за ціну викупу: $ethBuyoutPrice"
+
+                        (weiBidAmount > BigDecimal(assetData?.highestBid) &&
+                                weiBidAmount < BigDecimal(assetData?.buyoutPrice) &&
+                                weiBalance > weiBidAmount) ->{
+                                    bidError = null
+                                    viewModel.placeBid(
+                                        assetId.toBigInteger(),
+                                        weiBidAmount.toBigInteger()
+                                    )
+                                }
+
+
+                        else -> bidError = "Щось пішло не так"
+                    }
+                },
+                enabled = viewModel.isUserOwnerOrHighestBidder(assetData) && validatePrice(ethBidAmount),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(64.dp)
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text(
+                    text = "Зробити ставку",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.Black
+                )
+            }
+
             Spacer(modifier = Modifier.height(8.dp))
         }
     }
@@ -136,27 +192,6 @@ fun ImageNameRow(asset: AssetData?) {
             fontSize = 36.sp,
             modifier = Modifier.padding(top = 14.dp),
             fontWeight = FontWeight.Bold
-        )
-    }
-}
-
-@Composable
-fun ActionBtn(onClick: () -> Unit, text: String) {
-    Button(
-        onClick = {
-            onClick
-        },
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(64.dp)
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        shape = RoundedCornerShape(12.dp)
-    ) {
-        Text(
-            text = text,
-            fontSize = 16.sp,
-            fontWeight = FontWeight.Bold,
-            color = Color.Black
         )
     }
 }

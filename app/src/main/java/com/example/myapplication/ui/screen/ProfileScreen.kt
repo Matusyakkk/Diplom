@@ -1,6 +1,7 @@
 package com.example.myapplication.ui.screen
 
 import android.net.Uri
+import android.util.Log
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -51,6 +52,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -59,6 +61,7 @@ import coil3.compose.rememberAsyncImagePainter
 import com.example.myapplication.R
 import com.example.myapplication.data.AssetData
 import com.example.myapplication.viewmodel.ViewModel
+import java.math.BigDecimal
 import kotlin.math.roundToInt
 
 @Composable
@@ -110,7 +113,7 @@ fun TopBar(viewModel: ViewModel, navController: NavController? = null) {
                     navController?.navigate("walletConnect")
                 }
             }) {
-                Image(
+                Icon(
                     imageVector = Icons.AutoMirrored.Filled.ExitToApp,
                     contentDescription = "Перехід на профіль"
                 )
@@ -245,9 +248,9 @@ fun TabsInProfile(viewModel: ViewModel, navController: NavController) {
         when (tabs[selectedTabIndex]) {
             "Мої предмети" -> TabContentGrid(viewModel.findAssetsOwnedByUser(), navController)
 
-            "На продажі" -> ListAssetRowOnSale(viewModel.findAssetsListedByUser(), navController)
+            "На продажі" -> ListAssetRowOnSale(viewModel.findAssetsListedByUser(), navController, viewModel)
 
-            "Мої ставки" -> ListAssetRowOnSale(viewModel.findAssetsByHighestBidder(), navController)
+            "Мої ставки" -> ListAssetRowOnSale(viewModel.findAssetsByHighestBidder(), navController, viewModel)
         }
     }
 }
@@ -302,11 +305,15 @@ fun AssetCard(asset: AssetData, navController: NavController? = null) {
             text = asset.name,
             style = MaterialTheme.typography.bodyLarge,
             fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(8.dp)
         )
         Text(
-            text = asset.description,
+            text = shortenDescription(asset.description),
             style = MaterialTheme.typography.bodySmall,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(start = 8.dp, bottom = 8.dp, end = 8.dp)
         )
     }
@@ -315,7 +322,11 @@ fun AssetCard(asset: AssetData, navController: NavController? = null) {
 
 //На продажі ТА Мої Ставки
 @Composable
-fun ListAssetRowOnSale(assets: List<AssetData>, navController: NavController? = null){
+fun ListAssetRowOnSale(
+    assets: List<AssetData>,
+    navController: NavController? = null,
+    viewModel: ViewModel
+){
     if (assets.isEmpty()){
         Text(text = "Тут ще немає активів")
     } else{
@@ -324,15 +335,16 @@ fun ListAssetRowOnSale(assets: List<AssetData>, navController: NavController? = 
         ) {
             items(assets.size) { index ->
                 val asset = assets[index]
-                AssetRowOnSale(asset, navController)
+                AssetRowOnSale(asset, navController, viewModel)
             }
         }
     }
 }
 
 @Composable
-fun AssetRowOnSale(asset: AssetData, navController: NavController? = null) {
+fun AssetRowOnSale(asset: AssetData, navController: NavController? = null, viewModel: ViewModel) {
     val imageUri = Uri.fromFile(asset.imageFile)
+    val ethHighestBid = viewModel.weiToEth(BigDecimal(asset.highestBid))
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -361,10 +373,13 @@ fun AssetRowOnSale(asset: AssetData, navController: NavController? = null) {
                     text = asset.name,
                     fontSize = 36.sp,
                     modifier = Modifier.padding(top = 14.dp),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                     fontWeight = FontWeight.Bold
                 )
+                Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "${asset.highestBid} ETH",
+                    text = "$ethHighestBid ETH",
                     fontSize = 22.sp,
                     modifier = Modifier.padding(top = 14.dp, end = 16.dp),
                     color = Color.Gray
@@ -375,3 +390,11 @@ fun AssetRowOnSale(asset: AssetData, navController: NavController? = null) {
 }
 
 fun Offset.toIntOffset() = IntOffset(x.roundToInt(), y.roundToInt())
+
+fun shortenDescription(text: String, maxLength: Int = 25): String {
+    return if (text.length > maxLength) {
+        text.take(maxLength) + "..."
+    } else {
+        text
+    }
+}

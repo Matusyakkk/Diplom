@@ -11,7 +11,7 @@ import io.metamask.androidsdk.Ethereum
 import io.metamask.androidsdk.SDKOptions
 import javax.inject.Singleton
 
-var INFURA_KEY = "168f1531e44d4fd5bba521389b58daa1"
+var INFURA_KEY = "XXX"
 
 @Module
 @InstallIn(SingletonComponent::class)

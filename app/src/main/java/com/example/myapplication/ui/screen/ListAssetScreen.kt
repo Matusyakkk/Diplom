@@ -2,6 +2,8 @@ package com.example.myapplication.ui.screen
 
 import android.net.Uri
 import android.os.Build
+import android.util.Log
+import android.widget.Toast
 import androidx.annotation.RequiresApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -26,12 +28,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -42,8 +46,7 @@ import com.example.myapplication.R
 import com.example.myapplication.data.AssetData
 import com.example.myapplication.viewmodel.ViewModel
 import com.example.myapplication.viewmodel.ViewModel.NavigationEvent
-import java.time.Instant
-import java.time.temporal.ChronoUnit
+import java.math.BigDecimal
 
 @RequiresApi(Build.VERSION_CODES.O)
 @Composable
@@ -65,14 +68,14 @@ fun ListAssetScreen(
             else -> Unit
         }
     }
+    val context = LocalContext.current
     val assetData: AssetData? = viewModel.findById(assetId.toBigInteger())
-    var buyuot by remember { mutableStateOf("0") }
+    var ethBuyuot by remember { mutableStateOf("0") }
+    var priceError by remember { mutableStateOf<String?>(null) }
     val imageUri = Uri.fromFile(assetData?.imageFile)
 
-    var selectedTime by remember { mutableStateOf(1) }  // Тривалість аукціону в днях
-    // Обчислення кінцевого часу аукціону
-    val currentTime = Instant.now()
-    val auctionEndTimeBigInt = currentTime.plus(selectedTime.toLong(), ChronoUnit.DAYS).epochSecond
+    var selectedTime by remember { mutableIntStateOf(1) }  // Тривалість аукціону в днях
+    val auctionEndTimeBigInt = selectedTime * 86400
 
     Scaffold(
         bottomBar = {
@@ -84,13 +87,18 @@ fun ListAssetScreen(
             ) {
                 Button(
                     onClick = {
-                        viewModel.listAssetForAuction(
-                            assetId.toBigInteger(),
-                            buyuot.toBigInteger(),
-                            auctionEndTimeBigInt.toBigInteger()
-                        )
-                        //TO-DO("EVENT_LISTENER:: listener screen switch??")
+                        if (!validatePrice(ethBuyuot)) {
+                            priceError = "Ціна викупу має бути більше 0"
+                        } else {
+                            priceError = null
+                            viewModel.listAssetForAuction(
+                                assetId.toBigInteger(),
+                                viewModel.ethToWei(BigDecimal(replaceCommasWithDots(ethBuyuot))).toBigInteger(),
+                                auctionEndTimeBigInt.toBigInteger()
+                            )
+                        }
                     },
+                    enabled = validatePrice(ethBuyuot),
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(64.dp)
@@ -113,7 +121,7 @@ fun ListAssetScreen(
                 .padding(innerPadding)
                 .padding(start = 16.dp, end = 16.dp)
         ) {
-            BackButton(navController, "Виставити на продаж актив")
+            BackButton(navController, "Виставити на продаж актив", "profile")
 
             Column(
                 modifier = Modifier
@@ -124,24 +132,21 @@ fun ListAssetScreen(
                         shape = RoundedCornerShape(18.dp)
                     )
             ) {
-
-                Row {
-                    Image(
-                        painter = rememberAsyncImagePainter(imageUri),
-                        contentDescription = assetData?.name,
-                        modifier = Modifier
-                                .fillMaxWidth()
-                                .height(200.dp),
-                            contentScale = ContentScale.Crop
-                    )
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Text(
-                        text = assetData?.name.toString(),
-                        fontSize = 36.sp,
-                        modifier = Modifier.padding(top = 14.dp),
-                        fontWeight = FontWeight.Bold
-                    )
-                }
+                Image(
+                    painter = rememberAsyncImagePainter(imageUri),
+                    contentDescription = assetData?.name,
+                    modifier = Modifier
+                            .fillMaxWidth()
+                            .height(200.dp),
+                        contentScale = ContentScale.Crop
+                )
+                Spacer(modifier = Modifier.width(16.dp))
+                Text(
+                    text = assetData?.name.toString(),
+                    fontSize = 36.sp,
+                    modifier = Modifier.padding(top = 14.dp, start = 14.dp, end = 14.dp, bottom = 8.dp),
+                    fontWeight = FontWeight.Bold
+                )
                 Text(
                     text = assetData?.description.toString(),
                     style = MaterialTheme.typography.bodyLarge,
@@ -153,20 +158,31 @@ fun ListAssetScreen(
                     thickness = 1.dp,
                     color = Color.DarkGray
                 )
-                Text(
-                    text = "Ціна викупу:",
-                    style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.padding(start = 16.dp, bottom = 8.dp, top = 8.dp)
-                )
+                Spacer(modifier = Modifier.height(8.dp))
                 OutlinedTextField(
-                    value = buyuot,
-                    onValueChange = { buyuot = it },
+                    value = ethBuyuot,
+                    onValueChange = {
+                        if (it.matches(Regex("^\\d*([.,]?\\d*)?\$"))) {
+                            ethBuyuot = it
+                            priceError = null
+                        }
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp),
                     singleLine = true,
-                    shape = RoundedCornerShape(12.dp)
+                    isError = priceError != null,
+                    shape = RoundedCornerShape(12.dp),
+                    label = { Text("Ціна викупу в ETH") }
                 )
+                if (priceError != null) {
+                    Text(
+                        text = priceError ?: "",
+                        color = Color.Red,
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(start = 16.dp, top = 4.dp)
+                    )
+                }
                 Spacer(modifier = Modifier.height(8.dp))
 
                 Text(
@@ -176,7 +192,10 @@ fun ListAssetScreen(
                 )
                 Slider(
                     value = selectedTime.toFloat(),
-                    onValueChange = { selectedTime = it.toInt() },
+                    onValueChange = {
+                        Log.i("LISTING","selected time $it and ${it.toInt()}")
+                        selectedTime = it.toInt()
+                                    },
                     valueRange = 1f..30f,  // Вибір від 1 до 30 днів
                     steps = 29,
                     modifier = Modifier.padding(horizontal = 16.dp)
@@ -184,5 +203,20 @@ fun ListAssetScreen(
                 Text("Вибрано днів: $selectedTime", modifier = Modifier.padding(start = 16.dp))
             }
         }
+    }
+}
+
+fun replaceCommasWithDots(input: String): String {
+    return input.replace(',', '.')
+}
+
+// Функція валідації
+fun validatePrice(input: String): Boolean {
+    val cleanInput = input.replace(',', '.')
+    return try {
+        val price = BigDecimal(cleanInput)
+        price > BigDecimal.ZERO
+    } catch (e: Exception) {
+        false
     }
 }

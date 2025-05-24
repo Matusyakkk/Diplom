@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -68,10 +69,10 @@ fun CreateAssetScreen(
     }
 
     val context = LocalContext.current
-    var name by remember { mutableStateOf("Назва") }
-    var description by remember { mutableStateOf("Опис") }
+    var name by remember { mutableStateOf("") }
+    var description by remember { mutableStateOf("") }
     var imageUri by remember { mutableStateOf<Uri?>(null) }
-
+    val isFormValid = name.isNotBlank() && description.isNotBlank() && imageUri != null
     val imagePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
@@ -94,8 +95,8 @@ fun CreateAssetScreen(
                                 viewModel.createAsset(file, name, description)
                             }
                         }
-                        //TO-DO("EVENT_LISTENER:: Event Switch or nav??")
                     },
+                    enabled = isFormValid,
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(64.dp)
@@ -119,7 +120,7 @@ fun CreateAssetScreen(
                 .padding(innerPadding)
                 .padding(start = 16.dp, end = 16.dp)
         ) {
-            BackButton(navController, "Створити NFT")
+            BackButton(navController, "Створити NFT", "itemList")
 
             Column(
                 modifier = Modifier
@@ -130,67 +131,78 @@ fun CreateAssetScreen(
                         shape = RoundedCornerShape(18.dp)
                     )
             ) {
-                Row {
-                    imageUri?.let {
-                        Image(
-                            painter = rememberAsyncImagePainter(it),
-                            contentDescription = "Asset Image",
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier
-                                .size(124.dp)
-                                .padding(16.dp)
-                                .clip(RoundedCornerShape(18.dp))
+                if (name.isNotBlank() || description.isNotBlank() || imageUri != null) {
+                    Row {
+                        imageUri?.let {
+                            Image(
+                                painter = rememberAsyncImagePainter(it),
+                                contentDescription = "Asset Image",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier
+                                    .size(124.dp)
+                                    .padding(16.dp)
+                                    .clip(RoundedCornerShape(18.dp))
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Text(
+                            text = name,
+                            fontSize = 36.sp,
+                            modifier = Modifier.padding(top = 14.dp),
+                            fontWeight = FontWeight.Bold
                         )
-                    }
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Text(
-                        text = name,
-                        fontSize = 36.sp,
-                        modifier = Modifier.padding(top = 14.dp),
-                        fontWeight = FontWeight.Bold
-                    )
 
+                    }
+                    Text(
+                        text = description,
+                        style = MaterialTheme.typography.bodyLarge,
+                        modifier = Modifier.padding(start = 14.dp, end = 14.dp, bottom = 8.dp),
+                        color = Color.Gray
+                    )
+                    HorizontalDivider(
+                        modifier = Modifier.padding(vertical = 8.dp, horizontal = 16.dp),
+                        thickness = 1.dp,
+                        color = Color.DarkGray
+                    )
                 }
-                Text(
-                    text = description,
-                    style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.padding(start = 14.dp, end = 14.dp, bottom = 8.dp),
-                    color = Color.Gray
-                )
-                HorizontalDivider(
-                    modifier = Modifier.padding(vertical = 8.dp, horizontal = 16.dp),
-                    thickness = 1.dp,
-                    color = Color.DarkGray
-                )
-                Text(
-                    text = "Назва:",
-                    style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.padding(start = 16.dp, bottom = 8.dp, top = 8.dp)
-                )
+
+                Spacer(modifier = Modifier.height(8.dp))
                 OutlinedTextField(
                     value = name,
-                    onValueChange = { name = it },
+                    onValueChange = { if (it.length <= 15) name = it },
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp),
                     singleLine = true,
-                    shape = RoundedCornerShape(12.dp)
+                    shape = RoundedCornerShape(12.dp),
+                    label = { Text("Назва") }
+                )
+                Text(
+                    text = "${name.length}/15",
+                    modifier = Modifier.padding(start = 16.dp),
+                    fontSize = 12.sp,
+                    color = counterColor(name.length, 15)
                 )
                 Spacer(modifier = Modifier.height(8.dp))
 
-                Text(
-                    text = "Опис:",
-                    style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.padding(start = 16.dp, bottom = 8.dp, top = 8.dp)
-                )
                 OutlinedTextField(
                     value = description,
-                    onValueChange = { description = it },
+                    onValueChange = { if (it.length <= 200) description = it },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp),
-                    singleLine = true,
-                    shape = RoundedCornerShape(12.dp)
+                        .padding(horizontal = 16.dp)
+                        .heightIn(min = 56.dp, max = 150.dp),
+                    singleLine = false,
+                    minLines = 3,
+                    maxLines = 8,
+                    shape = RoundedCornerShape(12.dp),
+                    label = { Text("Опис") }
+                )
+                Text(
+                    text = "${description.length}/200",
+                    modifier = Modifier.padding(start = 16.dp),
+                    fontSize = 12.sp,
+                    color = counterColor(description.length, 200)
                 )
                 Spacer(modifier = Modifier.height(8.dp))
 
@@ -230,4 +242,9 @@ fun uriToFile(uri: Uri, context: Context): File? {
         Log.e("TESTWALLET", "CreateItemScreen.kt uriToFile() Error ${e.message.toString()}")
         null
     }
+}
+
+fun counterColor(currentLength: Int, maxLength: Int): Color {
+    val threshold = 5
+    return if (maxLength - currentLength <= threshold) Color.Red else Color.Gray
 }
