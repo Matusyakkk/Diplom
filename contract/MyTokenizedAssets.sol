@@ -106,6 +106,33 @@ contract MyTokenizedAssets is ERC721URIStorage {
         emit AssetListedForAuction(assetId, buyoutPrice, auctionDuration);
     }
 
+    function finalizeAuction(uint256 assetId) external {
+        require(_exists(assetId), "Asset does not exist");
+        Asset storage asset = assets[assetId];
+
+        require(asset.auctionEndTime > 0, "Auction was not started");
+
+        address previousOwner = asset.owner;
+
+        if (asset.highestBidder != address(0)) {
+            address winner = asset.highestBidder;
+            uint256 winningBid = asset.highestBid;
+
+            _transfer(previousOwner, winner, assetId);
+            asset.owner = winner;
+
+            payable(previousOwner).transfer(winningBid);
+
+            emit AssetBought(assetId, winner, winningBid);
+        }
+
+        asset.auctionEndTime = 0;
+        asset.highestBid = 0;
+        asset.highestBidder = address(0);
+        asset.buyoutPrice = 0;
+    }
+
+
     function getAllAssets() external  view returns (Asset[] memory) {
         uint256 total = _allAssetIds.length;
         Asset[] memory allAssets = new Asset[](total);

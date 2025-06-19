@@ -12,26 +12,27 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import com.example.myapplication.ui.screen.BuyOutScreen
-import com.example.myapplication.ui.screen.CreateAssetScreen
-import com.example.myapplication.ui.screen.AssetDetailScreen
-import com.example.myapplication.ui.screen.AssetsForSaleScreen
-import com.example.myapplication.ui.screen.ListAssetScreen
-import com.example.myapplication.ui.screen.MakeBidScreen
-import com.example.myapplication.ui.screen.ProfileScreen
-import com.example.myapplication.ui.screen.WalletConnectScreen
+import com.example.myapplication.ui.screen.details_asset.AssetDetailScreen
+import com.example.myapplication.ui.screen.buyout_asset.BuyOutRoute
+import com.example.myapplication.ui.screen.connect_wallet.WalletConnectRoute
+import com.example.myapplication.ui.screen.create_asset.CreateAssetRoute
+import com.example.myapplication.ui.screen.details_asset.AssetDetailRoute
+import com.example.myapplication.ui.screen.list_assets.AssetsForSaleRoute
+import com.example.myapplication.ui.screen.make_bid.MakeBidRoute
+import com.example.myapplication.ui.screen.profile.ProfileRoute
+import com.example.myapplication.ui.screen.sell_asset.ListAssetRoute
 import com.example.myapplication.ui.theme.MyApplicationTheme
-import com.example.myapplication.viewmodel.ViewModel
+import com.example.myapplication.ui.viewmodel.AssetViewModel
+import com.example.myapplication.ui.viewmodel.WalletViewModel
 import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
-
-    private val viewModel: ViewModel by viewModels()
+    private val walletViewModel: WalletViewModel by viewModels()
+    private val assetViewModel: AssetViewModel by viewModels()
 
     @RequiresApi(Build.VERSION_CODES.O)
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -40,7 +41,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             MyApplicationTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    NavGraph(viewModel, modifier = Modifier.padding(innerPadding))
+                    NavGraph(modifier = Modifier.padding(innerPadding))
                 }
             }
         }
@@ -48,43 +49,43 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        viewModel.logOut()
+        walletViewModel.performLogout()
     }
 }
 
 @RequiresApi(Build.VERSION_CODES.O)
 @Composable
-fun NavGraph(viewModel: ViewModel = hiltViewModel(), modifier: Modifier) {
+fun NavGraph(modifier: Modifier) {
     val navController = rememberNavController()
 
     NavHost(navController = navController, startDestination = "walletConnect") {
         composable("walletConnect") {
-            WalletConnectScreen(viewModel, navController)
+            WalletConnectRoute(navController)
         }
         composable("itemList") {
-            AssetsForSaleScreen(viewModel, navController)
+            AssetsForSaleRoute(navController)
         }
         composable("createItem") {
-            CreateAssetScreen(viewModel, navController)
+            CreateAssetRoute(navController)
         }
         composable ("profile") {
-            ProfileScreen(viewModel, navController)
+            ProfileRoute(navController)
         }
         composable("listAsset/{assetId}") { backStackEntry ->
             val assetId = backStackEntry.arguments?.getString("assetId") ?: ""
-            ListAssetScreen(viewModel, assetId, navController)
+            ListAssetRoute(navController, assetId)
         }
         composable("makeBid/{assetId}") {backStackEntry ->
             val assetId = backStackEntry.arguments?.getString("assetId") ?: ""
-            MakeBidScreen(viewModel, assetId, navController)
+            MakeBidRoute(navController, assetId)
         }
         composable("buyout/{assetId}") {backStackEntry ->
             val assetId = backStackEntry.arguments?.getString("assetId") ?: ""
-            BuyOutScreen(viewModel, assetId, navController)
+            BuyOutRoute(navController, assetId)
         }
         composable("itemDetail/{assetId}") { backStackEntry ->
             val assetId = backStackEntry.arguments?.getString("assetId") ?: ""
-            AssetDetailScreen(viewModel, assetId, navController)
+            AssetDetailRoute(navController, assetId)
         }
     }
 }

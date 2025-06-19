@@ -70,6 +70,7 @@ dependencies {
     implementation("io.reactivex.rxjava3:rxkotlin:3.0.1")
     implementation("androidx.compose.material3:material3:1.3.2") // Актуальна версія на момент 2025
     implementation("androidx.compose.material:material:1.8.2")
+    implementation("net.onyxmueller.pinata:pinata:1.0.1")
     //implementation("androidx.compose.material:material-pullrefresh:1.1.0")
     implementation(libs.web3core)
     implementation(libs.androidx.core.ktx)
